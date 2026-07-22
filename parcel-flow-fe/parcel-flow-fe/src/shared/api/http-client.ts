@@ -28,8 +28,29 @@ function buildUrl(endpoint: string, params?: RequestOptions["params"]): string {
   return `${baseUrl}${prefix}${path}${queryString}`;
 }
 
+/**
+ * In-flight refresh, shared by every caller that hits a 401 at the same time.
+ *
+ * Without this each 401 started its own refresh with the same refresh token.
+ * The server rotates on refresh, so the extra calls raced: one of them won and
+ * the others were handed access tokens whose jti was no longer the active one,
+ * leaving their retried request to fail with a second 401 that the retry guard
+ * will not attempt to recover from. Any page issuing two queries in parallel
+ * could therefore break the moment the access token expired.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
 /** Attempt a one-time silent refresh; returns true if a new access token was obtained. */
-async function tryRefresh(): Promise<boolean> {
+function tryRefresh(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = doRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+async function doRefresh(): Promise<boolean> {
   const refreshToken = tokenStore.getRefresh();
   if (!refreshToken) return false;
   try {
