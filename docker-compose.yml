@@ -73,7 +73,7 @@ services:
 
   backend:
     build:
-      context: ./parcel-flow-BE
+      context: ./parcel-flow-BE/parcel-flow-BE
     container_name: pf-backend
     depends_on:
       mysql:
@@ -112,7 +112,7 @@ services:
 
   frontend:
     build:
-      context: ./parcel-flow-fe
+      context: ./parcel-flow-fe/parcel-flow-fe
       args:
         NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
     container_name: pf-frontend

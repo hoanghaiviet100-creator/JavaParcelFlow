@@ -138,6 +138,22 @@
             <artifactId>spring-boot-testcontainers</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!--
+            TestRestTemplate defaults to SimpleClientHttpRequestFactory, which
+            since Spring Framework 6.1 streams the request body. HttpURLConnection
+            cannot replay a streamed body when the server answers 401, so every
+            negative auth assertion died with
+            "HttpRetryException: cannot retry due to server authentication".
+            With Apache HttpClient 5 on the test classpath, Spring Boot switches
+            TestRestTemplate to HttpComponentsClientHttpRequestFactory, which
+            handles 401 responses correctly.
+        -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -188,6 +204,31 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+            </plugin>
+
+            <!--
+                Surefire runs *Test classes during `mvn test`. Without Failsafe the
+                *IT classes (AuthFlowIT, ChangePasswordLockoutIT) are compiled and
+                then never executed — they were dead code until this was added.
+                Failsafe runs them in the integration-test phase, so `mvn verify`
+                exercises the real MySQL + Redis containers Testcontainers spins up.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

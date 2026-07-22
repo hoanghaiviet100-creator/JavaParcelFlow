@@ -28,7 +28,10 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
                 List.of(),
                 request.getRequestURI());
         response.setStatus(ErrorCode.AUTH_UNAUTHENTICATED.getStatus().value());
-        response.setContentType("application/json");
+        // Charset must be explicit: getWriter() otherwise falls back to the
+        // servlet default (ISO-8859-1) and mangles non-ASCII message text.
+        response.setContentType("application/json;charset=UTF-8");
+        response.setCharacterEncoding("UTF-8");
         objectMapper.writeValue(response.getWriter(), body);
     }
 }

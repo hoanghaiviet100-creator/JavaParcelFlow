@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
@@ -7,7 +8,22 @@ import { getTrackingApi } from "@/features/tracking/api/get-tracking.api";
 import LoadingState from "@/shared/components/LoadingState";
 import styles from "./result.module.scss";
 
+/**
+ * useSearchParams() opts the subtree out of static rendering, so Next.js
+ * requires a Suspense boundary above it. Without one, `next build` fails the
+ * whole export with "useSearchParams() should be wrapped in a suspense
+ * boundary at page /tracking/result", which is why the page component below is
+ * split out of the default export.
+ */
 export default function TrackingResultPage() {
+  return (
+    <Suspense fallback={<LoadingState message="Locating shipment details..." fullPage />}>
+      <TrackingResultContent />
+    </Suspense>
+  );
+}
+
+function TrackingResultContent() {
   const searchParams = useSearchParams();
   const code = searchParams.get("code") || "";
   const phone = searchParams.get("phone") || undefined;
@@ -35,20 +51,52 @@ export default function TrackingResultPage() {
     }
   };
 
+  /**
+   * Labels for the status codes the API actually sends. The previous version
+   * matched on HUB_INBOUND / HUB_OUTBOUND / FAILED, none of which exist in the
+   * backend enums (com.parcelflow.common.enums.OrderStatus and ParcelStatus),
+   * so most timeline entries fell through to `default` and were shown to the
+   * customer as raw constants like RECEIVED_AT_ORIGIN_HUB.
+   */
   const getStatusText = (status: string) => {
     switch (status) {
+      // shared between OrderStatus and ParcelStatus
       case "CREATED":
         return "Order Registered";
-      case "HUB_INBOUND":
-        return "Received at Transit Hub";
-      case "HUB_OUTBOUND":
-        return "Departed Transit Hub";
+      case "RECEIVED_AT_ORIGIN_HUB":
+        return "Received at Origin Hub";
+      case "WAITING_FOR_ROUTE":
+        return "Awaiting Route Assignment";
+      case "IN_TRANSIT":
+        return "In Transit";
       case "OUT_FOR_DELIVERY":
         return "Out for Delivery";
       case "DELIVERED":
         return "Delivered Successfully";
-      case "FAILED":
+      case "DELIVERY_FAILED":
         return "Delivery Attempt Failed";
+      case "RETURNING":
+        return "Returning to Sender";
+      case "RETURNED":
+        return "Returned to Sender";
+      case "CANCELLED":
+        return "Cancelled";
+      // OrderStatus only
+      case "ARRIVED_AT_FINAL_HUB":
+        return "Arrived at Final Hub";
+      // ParcelStatus only
+      case "WAITING_FOR_OUTBOUND":
+        return "Awaiting Dispatch";
+      case "ARRIVED_AT_HUB":
+        return "Arrived at Hub";
+      case "READY_FOR_DELIVERY":
+        return "Ready for Delivery";
+      case "ASSIGNED_TO_SHIPPER":
+        return "Assigned to Courier";
+      case "LOST":
+        return "Reported Lost";
+      case "DAMAGED":
+        return "Reported Damaged";
       default:
         return status;
     }

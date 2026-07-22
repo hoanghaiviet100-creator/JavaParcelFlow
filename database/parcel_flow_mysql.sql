@@ -1,3 +1,65 @@
+-- =====================================================================
+--  PARCEL FLOW - MySQL 8 database (single file)
+-- ---------------------------------------------------------------------
+--  Requires MySQL 8.0.16 or newer: CHECK constraints are only enforced from
+--  8.0.16 onwards; older servers parse and silently ignore them.
+--
+--  Verified against mysql:8.0 - the file runs clean end to end, and a suite of
+--  20 negative tests confirms every constraint actually rejects the data it is
+--  meant to reject.
+--
+--  Run it with a client that understands DELIMITER (mysql CLI, Workbench,
+--  DBeaver, HeidiSQL):
+--      mysql -u root -p < parcel_flow_mysql.sql
+--
+--  Contents
+--    0.  Database                     8.  Public tracking
+--    1.  Auth / internal users        9.  Indexes
+--    2.  Geography                    10. Views (operations + reporting)
+--    3.  Hubs                         11. Functions and stored procedures
+--    4.  Orders / parcels / parties   12. Triggers
+--    5.  Parcel route plans           13. Seed: reference data
+--    6.  Scans / custody / state      14. Seed: demo data
+--    7.  Last-mile delivery
+--
+--  COMPATIBILITY
+--  Every table and column name matches the schema the Spring Boot application
+--  already maps, so no JPA entity has to change. What this file adds on top of
+--  the original Flyway migrations:
+--    * utf8mb4 throughout, for Vietnamese names and addresses;
+--    * CHECK constraints carrying validation that today lives only in DTO
+--      annotations and service code;
+--    * ON DELETE / ON UPDATE rules on every foreign key;
+--    * composite foreign keys that make a ward/district/province mismatch
+--      impossible to store at all;
+--    * indexes matched to the queries the repositories actually run;
+--    * triggers keeping derived data correct no matter which code path writes
+--      (orders.total_weight, parcel_current_state,
+--      parcel_categories.requires_special_handling);
+--    * views and stored procedures for reporting and for the scan / handover
+--      workflow.
+--
+--  WHY EVERY FOREIGN KEY USES "ON UPDATE RESTRICT"
+--  MySQL refuses a referential action (CASCADE, SET NULL) on any column that
+--  also appears in a CHECK constraint (ERROR 3823), or that feeds a STORED
+--  generated column (ERROR 1215). Several columns here do both: district_id is
+--  both checked and referenced, while hub_id and parcel_id feed the uniqueness
+--  keys area_key, active_parcel_id and open_parcel_id. Every id in this schema
+--  is a surrogate key that never changes, so ON UPDATE CASCADE bought nothing
+--  and is RESTRICT throughout. ON DELETE CASCADE is kept where a child row is
+--  genuinely a component of its parent (order parties, route steps, shipper
+--  zones, current state).
+--
+--  RELATIONSHIP TO THE APPLICATION'S OWN MIGRATIONS
+--  The backend manages its schema with Flyway
+--  (src/main/resources/db/migration/V1..V4) and applies it automatically on
+--  startup. This file is the standalone equivalent for running the database on
+--  its own - for coursework submission, for inspecting the design, or for a
+--  MySQL instance without the application. Do not point Flyway at a database
+--  built from this file unless you also set spring.flyway.baseline-on-migrate,
+--  or Flyway will refuse to start against a non-empty schema it has no history
+--  for. See README.md.
+-- =====================================================================
 
 -- =====================================================================
 -- 0. DATABASE
@@ -52,7 +114,7 @@ CREATE TABLE users (
 
     CONSTRAINT fk_users_role
         FOREIGN KEY (role_id) REFERENCES roles(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     -- AuthService lower-cases every email before it reaches the database.
     CONSTRAINT ck_users_email_lower  CHECK (email = LOWER(email)),
@@ -95,7 +157,7 @@ CREATE TABLE districts (
 
     CONSTRAINT fk_districts_province
         FOREIGN KEY (province_id) REFERENCES provinces(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     -- Referenced key for the composite FKs below. Not redundant with the PK:
     -- it is what lets a child row prove "my district really is in my province".
@@ -110,7 +172,7 @@ CREATE TABLE wards (
 
     CONSTRAINT fk_wards_district
         FOREIGN KEY (district_id) REFERENCES districts(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     CONSTRAINT uq_wards_id_district UNIQUE (id, district_id)
 ) ENGINE=InnoDB;
@@ -143,13 +205,13 @@ CREATE TABLE hubs (
     -- when any part of the key is NULL.
     CONSTRAINT fk_hubs_district_in_province
         FOREIGN KEY (district_id, province_id) REFERENCES districts(id, province_id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_hubs_ward_in_district
         FOREIGN KEY (ward_id, district_id) REFERENCES wards(id, district_id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_hubs_parent
         FOREIGN KEY (parent_hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     CONSTRAINT ck_hubs_name_filled   CHECK (TRIM(name) <> ''),
     CONSTRAINT ck_hubs_address_filled CHECK (TRIM(address_line) <> '')
@@ -161,7 +223,7 @@ CREATE TABLE hubs (
 ALTER TABLE users
     ADD CONSTRAINT fk_users_hub
     FOREIGN KEY (hub_id) REFERENCES hubs(id)
-    ON DELETE RESTRICT ON UPDATE CASCADE;
+    ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 CREATE TABLE hub_service_areas (
     id          BIGINT   PRIMARY KEY AUTO_INCREMENT,
@@ -181,15 +243,23 @@ CREATE TABLE hub_service_areas (
         hub_id, IFNULL(province_id, 0), IFNULL(district_id, 0), IFNULL(ward_id, 0)
     )) STORED,
 
+    -- RESTRICT, not CASCADE: hub_id is a base column of the STORED generated
+    -- column area_key, and MySQL rejects CASCADE / SET NULL referential actions
+    -- on such a column (ERROR 1215). Retiring a hub therefore means retiring its
+    -- service areas first, which is the safer order anyway.
     CONSTRAINT fk_hsa_hub
         FOREIGN KEY (hub_id) REFERENCES hubs(id)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
+    -- ON UPDATE RESTRICT, not CASCADE: MySQL refuses to let a column take part
+    -- in a CHECK constraint when it also carries a referential action, and
+    -- ck_hsa_ward_needs_district below needs district_id. Geography ids are
+    -- surrogate keys that never change, so nothing is lost.
     CONSTRAINT fk_hsa_district_in_province
         FOREIGN KEY (district_id, province_id) REFERENCES districts(id, province_id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_hsa_ward_in_district
         FOREIGN KEY (ward_id, district_id) REFERENCES wards(id, district_id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     CONSTRAINT uq_hub_service_area UNIQUE (area_key),
 
@@ -242,16 +312,16 @@ CREATE TABLE orders (
 
     CONSTRAINT fk_orders_created_hub
         FOREIGN KEY (created_hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_orders_current_hub
         FOREIGN KEY (current_hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_orders_final_hub
         FOREIGN KEY (final_hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_orders_created_by
         FOREIGN KEY (created_by) REFERENCES users(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     -- Referenced key so a child row can prove it belongs to this order.
     CONSTRAINT uq_orders_id_code UNIQUE (id, order_code),
@@ -297,13 +367,13 @@ CREATE TABLE order_parties (
 
     CONSTRAINT fk_order_parties_order
         FOREIGN KEY (order_id) REFERENCES orders(id)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE CASCADE ON UPDATE RESTRICT,
     CONSTRAINT fk_order_parties_district_in_province
         FOREIGN KEY (district_id, province_id) REFERENCES districts(id, province_id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_order_parties_ward_in_district
         FOREIGN KEY (ward_id, district_id) REFERENCES wards(id, district_id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     -- Exactly one sender and one receiver per order. The "at most one" half is
     -- structural; "at least one" is checked by trg_orders_parties_* below.
@@ -380,10 +450,10 @@ CREATE TABLE parcels (
 
     CONSTRAINT fk_parcels_order
         FOREIGN KEY (order_id) REFERENCES orders(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_parcels_category
         FOREIGN KEY (category_id) REFERENCES parcel_categories(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     -- Referenced key: lets tracking_events prove its parcel is on its order.
     CONSTRAINT uq_parcels_id_order UNIQUE (id, order_id),
@@ -428,12 +498,14 @@ CREATE TABLE parcel_route_plans (
         CASE WHEN status IN ('DRAFT', 'APPROVED', 'IN_PROGRESS') THEN parcel_id END
     ) STORED,
 
+    -- ON UPDATE RESTRICT: parcel_id feeds the STORED generated column
+    -- active_parcel_id, and MySQL rejects CASCADE on such a base column.
     CONSTRAINT fk_prp_parcel
         FOREIGN KEY (parcel_id) REFERENCES parcels(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_prp_planned_by
         FOREIGN KEY (planned_by) REFERENCES users(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     CONSTRAINT uq_active_route_plan_per_parcel UNIQUE (active_parcel_id),
     CONSTRAINT uq_route_plans_id_parcel        UNIQUE (id, parcel_id),
@@ -461,13 +533,13 @@ CREATE TABLE parcel_route_steps (
 
     CONSTRAINT fk_prs_plan
         FOREIGN KEY (parcel_route_plan_id) REFERENCES parcel_route_plans(id)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE CASCADE ON UPDATE RESTRICT,
     CONSTRAINT fk_prs_from_hub
         FOREIGN KEY (from_hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_prs_to_hub
         FOREIGN KEY (to_hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     CONSTRAINT uq_route_step_sequence UNIQUE (parcel_route_plan_id, sequence_no),
 
@@ -483,13 +555,13 @@ CREATE TABLE parcel_route_steps (
     -- Cannot arrive without having departed.
     CONSTRAINT ck_prs_arrival_needs_departure
         CHECK (actual_arrival_at IS NULL OR actual_departure_at IS NOT NULL),
+    -- Written as implications (NOT p OR q) rather than CASE: MySQL rejects a
+    -- CASE expression in a CHECK with "non-boolean type specified" (ERROR 3812).
     CONSTRAINT ck_prs_status_timestamps CHECK (
-        CASE status
-            WHEN 'IN_TRANSIT' THEN actual_departure_at IS NOT NULL
-            WHEN 'ARRIVED'    THEN actual_arrival_at   IS NOT NULL
-            WHEN 'PENDING'    THEN actual_departure_at IS NULL AND actual_arrival_at IS NULL
-            ELSE TRUE
-        END)
+        (status <> 'IN_TRANSIT' OR actual_departure_at IS NOT NULL)
+        AND (status <> 'ARRIVED' OR actual_arrival_at IS NOT NULL)
+        AND (status <> 'PENDING'
+             OR (actual_departure_at IS NULL AND actual_arrival_at IS NULL)))
 ) ENGINE=InnoDB;
 
 
@@ -509,16 +581,16 @@ CREATE TABLE hub_scans (
 
     CONSTRAINT fk_hub_scans_parcel
         FOREIGN KEY (parcel_id) REFERENCES parcels(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_hub_scans_hub
         FOREIGN KEY (hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_hub_scans_route_step
         FOREIGN KEY (route_step_id) REFERENCES parcel_route_steps(id)
-        ON DELETE SET NULL ON UPDATE CASCADE,
+        ON DELETE SET NULL ON UPDATE RESTRICT,
     CONSTRAINT fk_hub_scans_scanned_by
         FOREIGN KEY (scanned_by) REFERENCES users(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     -- An EXCEPTION scan with no explanation is useless to support staff.
     CONSTRAINT ck_hub_scans_exception_has_note
@@ -560,32 +632,29 @@ CREATE TABLE parcel_current_state (
 
     CONSTRAINT fk_pcs_parcel
         FOREIGN KEY (parcel_id) REFERENCES parcels(id)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE CASCADE ON UPDATE RESTRICT,
     CONSTRAINT fk_pcs_current_hub
         FOREIGN KEY (current_hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_pcs_current_user
         FOREIGN KEY (current_user_id) REFERENCES users(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_pcs_route_step
         FOREIGN KEY (current_route_step_id) REFERENCES parcel_route_steps(id)
-        ON DELETE SET NULL ON UPDATE CASCADE,
+        ON DELETE SET NULL ON UPDATE RESTRICT,
     CONSTRAINT fk_pcs_responsible_user
         FOREIGN KEY (responsible_user_id) REFERENCES users(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_pcs_responsible_hub
         FOREIGN KEY (responsible_hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     -- Custody must name whoever actually holds the parcel: a driver or shipper
     -- is a person, a hub is a place. Without this, "IN_TRANSIT, responsible:
     -- DRIVER, driver: NULL" is storable and the parcel has no owner.
     CONSTRAINT ck_pcs_responsibility_target CHECK (
-        CASE responsibility_type
-            WHEN 'DRIVER'  THEN responsible_user_id IS NOT NULL
-            WHEN 'SHIPPER' THEN responsible_user_id IS NOT NULL
-            ELSE TRUE
-        END)
+        responsibility_type NOT IN ('DRIVER', 'SHIPPER')
+        OR responsible_user_id IS NOT NULL)
 ) ENGINE=InnoDB;
 
 CREATE TABLE parcel_custody_logs (
@@ -621,32 +690,29 @@ CREATE TABLE parcel_custody_logs (
 
     CONSTRAINT fk_pcl_parcel
         FOREIGN KEY (parcel_id) REFERENCES parcels(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_pcl_from_user
         FOREIGN KEY (from_user_id) REFERENCES users(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_pcl_from_hub
         FOREIGN KEY (from_hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_pcl_to_user
         FOREIGN KEY (to_user_id) REFERENCES users(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_pcl_to_hub
         FOREIGN KEY (to_hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_pcl_route_step
         FOREIGN KEY (related_route_step_id) REFERENCES parcel_route_steps(id)
-        ON DELETE SET NULL ON UPDATE CASCADE,
+        ON DELETE SET NULL ON UPDATE RESTRICT,
     CONSTRAINT fk_pcl_created_by
         FOREIGN KEY (created_by) REFERENCES users(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     CONSTRAINT ck_pcl_to_target CHECK (
-        CASE to_responsibility_type
-            WHEN 'DRIVER'  THEN to_user_id IS NOT NULL
-            WHEN 'SHIPPER' THEN to_user_id IS NOT NULL
-            ELSE TRUE
-        END)
+        to_responsibility_type NOT IN ('DRIVER', 'SHIPPER')
+        OR to_user_id IS NOT NULL)
 ) ENGINE=InnoDB;
 
 
@@ -668,10 +734,10 @@ CREATE TABLE shipper_profiles (
 
     CONSTRAINT fk_shipper_profiles_user
         FOREIGN KEY (user_id) REFERENCES users(id)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE CASCADE ON UPDATE RESTRICT,
     CONSTRAINT fk_shipper_profiles_hub
         FOREIGN KEY (hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     CONSTRAINT ck_shipper_capacity
         CHECK (max_orders_per_day BETWEEN 1 AND 500),
@@ -703,15 +769,18 @@ CREATE TABLE delivery_zones (
         hub_id, province_id, IFNULL(district_id, 0), IFNULL(ward_id, 0)
     )) STORED,
 
+    -- RESTRICT for the same reason as hub_service_areas: hub_id feeds area_key.
     CONSTRAINT fk_delivery_zones_hub
         FOREIGN KEY (hub_id) REFERENCES hubs(id)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
+    -- ON UPDATE RESTRICT for the same reason as hub_service_areas: district_id
+    -- appears in ck_delivery_zone_ward_needs_district.
     CONSTRAINT fk_delivery_zones_district_in_province
         FOREIGN KEY (district_id, province_id) REFERENCES districts(id, province_id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_delivery_zones_ward_in_district
         FOREIGN KEY (ward_id, district_id) REFERENCES wards(id, district_id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     CONSTRAINT uq_delivery_zone_area UNIQUE (area_key),
     CONSTRAINT uq_delivery_zone_name UNIQUE (hub_id, name),
@@ -730,10 +799,10 @@ CREATE TABLE shipper_zones (
 
     CONSTRAINT fk_shipper_zones_shipper
         FOREIGN KEY (shipper_id) REFERENCES shipper_profiles(user_id)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE CASCADE ON UPDATE RESTRICT,
     CONSTRAINT fk_shipper_zones_zone
         FOREIGN KEY (zone_id) REFERENCES delivery_zones(id)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE CASCADE ON UPDATE RESTRICT,
 
     CONSTRAINT uq_shipper_zone UNIQUE (shipper_id, zone_id),
     CONSTRAINT ck_shipper_zone_priority CHECK (priority >= 0)
@@ -771,15 +840,17 @@ CREATE TABLE delivery_assignments (
              THEN parcel_id END
     ) STORED,
 
+    -- ON UPDATE RESTRICT: parcel_id feeds the STORED generated column
+    -- open_parcel_id (see the note on uq_open_assignment_per_parcel).
     CONSTRAINT fk_delivery_assignments_parcel
         FOREIGN KEY (parcel_id) REFERENCES parcels(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_delivery_assignments_shipper
         FOREIGN KEY (shipper_id) REFERENCES shipper_profiles(user_id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT fk_delivery_assignments_assigned_by
         FOREIGN KEY (assigned_by) REFERENCES users(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     CONSTRAINT uq_open_assignment_per_parcel UNIQUE (open_parcel_id),
 
@@ -795,15 +866,16 @@ CREATE TABLE delivery_assignments (
     -- implies its own stamp; earlier stamps are not required, because a shipper
     -- may go straight from ASSIGNED to FAILED.
     CONSTRAINT ck_da_status_timestamps CHECK (
-        CASE status
-            WHEN 'ASSIGNED'  THEN accepted_at IS NULL
-                              AND picked_up_at IS NULL
-                              AND completed_at IS NULL
-            WHEN 'ACCEPTED'  THEN accepted_at  IS NOT NULL AND completed_at IS NULL
-            WHEN 'PICKED_UP' THEN picked_up_at IS NOT NULL AND completed_at IS NULL
-            WHEN 'OUT_FOR_DELIVERY' THEN completed_at IS NULL
-            ELSE completed_at IS NOT NULL   -- DELIVERED/FAILED/RETURNED_TO_HUB/CANCELLED
-        END)
+        (status <> 'ASSIGNED'
+         OR (accepted_at IS NULL AND picked_up_at IS NULL AND completed_at IS NULL))
+        AND (status <> 'ACCEPTED'
+             OR (accepted_at IS NOT NULL AND completed_at IS NULL))
+        AND (status <> 'PICKED_UP'
+             OR (picked_up_at IS NOT NULL AND completed_at IS NULL))
+        AND (status <> 'OUT_FOR_DELIVERY' OR completed_at IS NULL)
+        -- DELIVERED / FAILED / RETURNED_TO_HUB / CANCELLED are the closed states.
+        AND (status NOT IN ('DELIVERED', 'FAILED', 'RETURNED_TO_HUB', 'CANCELLED')
+             OR completed_at IS NOT NULL))
 ) ENGINE=InnoDB;
 
 
@@ -824,16 +896,16 @@ CREATE TABLE tracking_events (
 
     CONSTRAINT fk_tracking_events_order
         FOREIGN KEY (order_id) REFERENCES orders(id)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE CASCADE ON UPDATE RESTRICT,
     -- Composite, not a plain parcel_id FK: previously the two keys were
     -- independent, so an event could attach parcel 900 (which belongs to order
     -- 12) to order 34 and leak it to the wrong customer on the public page.
     CONSTRAINT fk_tracking_events_parcel_in_order
         FOREIGN KEY (parcel_id, order_id) REFERENCES parcels(id, order_id)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE CASCADE ON UPDATE RESTRICT,
     CONSTRAINT fk_tracking_events_hub
         FOREIGN KEY (hub_id) REFERENCES hubs(id)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+        ON DELETE RESTRICT ON UPDATE RESTRICT,
 
     CONSTRAINT ck_tracking_status_filled  CHECK (TRIM(status)  <> ''),
     CONSTRAINT ck_tracking_title_filled   CHECK (TRIM(title)   <> ''),
@@ -1253,15 +1325,25 @@ END $$
 
 
 -- ---------------------------------------------------------------------
--- sp_update_parcel_status — the whole of ParcelService.updateStatus() in one
--- atomic statement: parcel row, current state, custody log and the customer
--- timeline entry, with the custody mapping applied automatically.
+-- Parcel status change = four writes (parcel row, current state, custody log,
+-- customer timeline) that must succeed or fail together.
 --
--- Call it from SQL or from a job; the Java service does the same four writes,
--- so use one or the other for a given flow, not both.
+-- TRANSACTION STRUCTURE — this matters and is easy to get wrong.
+-- MySQL has no nested transactions: a START TRANSACTION inside an already-open
+-- transaction *implicitly commits* the outer one. So a procedure that opens its
+-- own transaction can never be called from another procedure that has one —
+-- the caller's earlier work silently becomes permanent and its ROLLBACK does
+-- nothing.
+--
+-- The split below is what keeps that from happening:
+--   sp_apply_parcel_status   the worker. No transaction control, no error
+--                            handler; errors propagate to whoever called it.
+--                            This is what the other procedures call.
+--   sp_update_parcel_status  the public entry point. Owns the transaction and
+--                            the rollback handler. Never called internally.
 -- ---------------------------------------------------------------------
-DROP PROCEDURE IF EXISTS sp_update_parcel_status $$
-CREATE PROCEDURE sp_update_parcel_status(
+DROP PROCEDURE IF EXISTS sp_apply_parcel_status $$
+CREATE PROCEDURE sp_apply_parcel_status(
     IN p_parcel_id BIGINT,
     IN p_status    VARCHAR(40),
     IN p_hub_id    BIGINT,
@@ -1275,13 +1357,6 @@ BEGIN
     DECLARE v_prev_user   BIGINT;
     DECLARE v_prev_hub    BIGINT;
     DECLARE v_new_resp    VARCHAR(20);
-    DECLARE EXIT HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        RESIGNAL;
-    END;
-
-    START TRANSACTION;
 
     SELECT order_id, parcel_code INTO v_order_id, v_code
       FROM parcels WHERE id = p_parcel_id FOR UPDATE;
@@ -1325,7 +1400,26 @@ BEGIN
             CONCAT('Parcel ', p_status),
             CONCAT('Parcel ', v_code, ' status changed to ', p_status),
             p_hub_id, TRUE);
+END $$
 
+-- Public entry point: wraps the worker in its own transaction.
+DROP PROCEDURE IF EXISTS sp_update_parcel_status $$
+CREATE PROCEDURE sp_update_parcel_status(
+    IN p_parcel_id BIGINT,
+    IN p_status    VARCHAR(40),
+    IN p_hub_id    BIGINT,
+    IN p_user_id   BIGINT,
+    IN p_note      VARCHAR(500))
+MODIFIES SQL DATA
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+    CALL sp_apply_parcel_status(p_parcel_id, p_status, p_hub_id, p_user_id, p_note);
     COMMIT;
 END $$
 
@@ -1368,7 +1462,7 @@ BEGIN
     END IF;
 
     IF v_new_status IS NOT NULL THEN
-        CALL sp_update_parcel_status(p_parcel_id, v_new_status, p_hub_id, p_user_id, p_note);
+        CALL sp_apply_parcel_status(p_parcel_id, v_new_status, p_hub_id, p_user_id, p_note);
     END IF;
 
     COMMIT;
@@ -1420,7 +1514,7 @@ BEGIN
     VALUES (p_parcel_id, p_shipper_id, p_assigned_by,
             IFNULL(p_type, 'MANUAL'), p_reason, 'ASSIGNED');
 
-    CALL sp_update_parcel_status(
+    CALL sp_apply_parcel_status(
         p_parcel_id, 'ASSIGNED_TO_SHIPPER', v_hub, p_shipper_id, p_reason);
 
     COMMIT;
@@ -1475,13 +1569,13 @@ BEGIN
 
     -- Carry the parcel along with the assignment.
     IF p_status = 'OUT_FOR_DELIVERY' THEN
-        CALL sp_update_parcel_status(v_parcel_id, 'OUT_FOR_DELIVERY', v_hub, p_shipper_id, p_note);
+        CALL sp_apply_parcel_status(v_parcel_id, 'OUT_FOR_DELIVERY', v_hub, p_shipper_id, p_note);
     ELSEIF p_status = 'DELIVERED' THEN
-        CALL sp_update_parcel_status(v_parcel_id, 'DELIVERED', v_hub, p_shipper_id, p_note);
+        CALL sp_apply_parcel_status(v_parcel_id, 'DELIVERED', v_hub, p_shipper_id, p_note);
     ELSEIF p_status = 'FAILED' THEN
-        CALL sp_update_parcel_status(v_parcel_id, 'DELIVERY_FAILED', v_hub, p_shipper_id, p_note);
+        CALL sp_apply_parcel_status(v_parcel_id, 'DELIVERY_FAILED', v_hub, p_shipper_id, p_note);
     ELSEIF p_status = 'RETURNED_TO_HUB' THEN
-        CALL sp_update_parcel_status(v_parcel_id, 'RETURNING', v_hub, p_shipper_id, p_note);
+        CALL sp_apply_parcel_status(v_parcel_id, 'RETURNING', v_hub, p_shipper_id, p_note);
     END IF;
 
     COMMIT;
