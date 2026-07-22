@@ -21,9 +21,9 @@ export default function DashboardPage() {
     ];
 
     const quickActions = [
-      { title: "User Management", desc: "Audit account permissions, courier profiles, and dispatcher rights.", link: "/dashboard/users", label: "Manage Users" },
-      { title: "Hub Inventory", desc: "Control sorting bins, warehouse capacity, and node registry.", link: "/dashboard/hubs", label: "View Hubs" },
-      { title: "Operations Console", desc: "Monitor all active parcel routes, logistics orders, and courier runs.", link: "/dashboard/orders", label: "View Orders" },
+      { title: "User Management", desc: "Audit account permissions, courier profiles, and dispatcher rights.", link: "/users", label: "Manage Users" },
+      { title: "Hub Inventory", desc: "Control sorting bins, warehouse capacity, and node registry.", link: "/hubs", label: "View Hubs" },
+      { title: "Operations Console", desc: "Monitor all active parcel routes, logistics orders, and courier runs.", link: "/orders", label: "View Orders" },
     ];
 
     return (
@@ -87,9 +87,9 @@ export default function DashboardPage() {
     ];
 
     const quickActions = [
-      { title: "New Order Intake", desc: "Create a new logistical parcel shipment and output custom barcodes.", link: "/dashboard/orders/create", label: "Create Order" },
-      { title: "Inbound/Outbound Scanner", desc: "Open dynamic barcode scanner module to register package arrivals or handovers.", link: "/dashboard/parcels/scan", label: "Open Scanner" },
-      { title: "Hub Custody Logs", desc: "Verify parcel timeline history and physical custody logs of your local hub.", link: "/dashboard/parcels", label: "View Custody Queue" },
+      { title: "New Order Intake", desc: "Create a new logistical parcel shipment and output custom barcodes.", link: "/orders/create", label: "Create Order" },
+      { title: "Inbound/Outbound Scanner", desc: "Open dynamic barcode scanner module to register package arrivals or handovers.", link: "/parcels/scan", label: "Open Scanner" },
+      { title: "Hub Custody Logs", desc: "Verify parcel timeline history and physical custody logs of your local hub.", link: "/parcels", label: "View Custody Queue" },
     ];
 
     return (
@@ -153,9 +153,9 @@ export default function DashboardPage() {
     ];
 
     const quickActions = [
-      { title: "Route Optimization", desc: "Build optimized transit path plans, configure hubs sequence, and compute mileage costs.", link: "/dashboard/routes", label: "Plan Routes" },
-      { title: "Courier Run Assignments", desc: "Assign pending packages to active couriers and dispatch drivers.", link: "/dashboard/delivery", label: "Dispatch Deliveries" },
-      { title: "Parcel Queue", desc: "Inspect shipping routes status and track transit locations.", link: "/dashboard/parcels", label: "Inspect Parcels" },
+      { title: "Route Optimization", desc: "Build optimized transit path plans, configure hubs sequence, and compute mileage costs.", link: "/routes", label: "Plan Routes" },
+      { title: "Courier Run Assignments", desc: "Assign pending packages to active couriers and dispatch drivers.", link: "/delivery", label: "Dispatch Deliveries" },
+      { title: "Parcel Queue", desc: "Inspect shipping routes status and track transit locations.", link: "/parcels", label: "Inspect Parcels" },
     ];
 
     return (

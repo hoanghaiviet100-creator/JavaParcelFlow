@@ -31,7 +31,7 @@ export default function OrderDetailPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       <div>
-        <Link href="/dashboard/orders" style={{ color: "var(--color-primary)", fontSize: "0.875rem" }}>
+        <Link href="/orders" style={{ color: "var(--color-primary)", fontSize: "0.875rem" }}>
           ← Back to Orders
         </Link>
         <h1 style={{ fontFamily: "var(--font-be-vietnam-pro)", fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.03em", marginTop: "0.5rem" }}>
@@ -81,7 +81,7 @@ export default function OrderDetailPage() {
                   {order.parcels.map((p) => (
                     <tr key={p.id} style={{ borderTop: "1px solid var(--color-border)" }}>
                       <td style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>
-                        <Link href={`/dashboard/parcels/${p.id}`} style={{ color: "var(--color-primary)" }}>
+                        <Link href={`/parcels/${p.id}`} style={{ color: "var(--color-primary)" }}>
                           {p.parcelCode}
                         </Link>
                       </td>

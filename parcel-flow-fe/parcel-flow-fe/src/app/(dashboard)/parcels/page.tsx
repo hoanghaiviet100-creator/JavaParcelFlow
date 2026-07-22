@@ -34,7 +34,7 @@ export default function ParcelsListPage() {
           </p>
         </div>
         <Link
-          href="/dashboard/parcels/scan"
+          href="/parcels/scan"
           style={{
             backgroundColor: "var(--color-primary)",
             color: "#FFF",
@@ -69,7 +69,7 @@ export default function ParcelsListPage() {
               {parcels.map((p) => (
                 <tr key={p.id} style={{ borderTop: "1px solid var(--color-border)" }}>
                   <td style={{ padding: "0.75rem 1rem", fontWeight: 600 }}>
-                    <Link href={`/dashboard/parcels/${p.id}`} style={{ color: "var(--color-primary)" }}>
+                    <Link href={`/parcels/${p.id}`} style={{ color: "var(--color-primary)" }}>
                       {p.parcelCode}
                     </Link>
                   </td>

@@ -34,7 +34,7 @@ export default function OrdersListPage() {
           </p>
         </div>
         <Link
-          href="/dashboard/orders/create"
+          href="/orders/create"
           style={{
             backgroundColor: "var(--color-primary)",
             color: "#FFF",
@@ -82,7 +82,7 @@ export default function OrdersListPage() {
               {orders.map((o) => (
                 <tr key={o.id} style={{ borderTop: "1px solid var(--color-border)" }}>
                   <td style={{ padding: "0.75rem 1rem", fontWeight: 600 }}>
-                    <Link href={`/dashboard/orders/${o.id}`} style={{ color: "var(--color-primary)" }}>
+                    <Link href={`/orders/${o.id}`} style={{ color: "var(--color-primary)" }}>
                       {o.orderCode}
                     </Link>
                   </td>

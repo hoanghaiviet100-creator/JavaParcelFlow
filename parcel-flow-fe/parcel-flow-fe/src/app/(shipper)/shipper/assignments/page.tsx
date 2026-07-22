@@ -60,7 +60,7 @@ export default function ShipperAssignmentsPage() {
             <div key={a.id} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-card)", padding: "1.25rem", backgroundColor: "var(--color-surface)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
                 <span style={{ fontWeight: 700 }}>
-                  <Link href={`/dashboard/parcels/${a.parcelId}`} style={{ color: "var(--color-primary)" }}>
+                  <Link href={`/parcels/${a.parcelId}`} style={{ color: "var(--color-primary)" }}>
                     {a.parcelCode ?? `Parcel #${a.parcelId}`}
                   </Link>
                 </span>

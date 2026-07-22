@@ -62,7 +62,7 @@ export default function ParcelDetailPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", maxWidth: 640 }}>
       <div>
-        <Link href="/dashboard/parcels" style={{ color: "var(--color-primary)", fontSize: "0.875rem" }}>
+        <Link href="/parcels" style={{ color: "var(--color-primary)", fontSize: "0.875rem" }}>
           ← Back to Parcels
         </Link>
         <h1 style={{ fontFamily: "var(--font-be-vietnam-pro)", fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.03em", marginTop: "0.5rem" }}>

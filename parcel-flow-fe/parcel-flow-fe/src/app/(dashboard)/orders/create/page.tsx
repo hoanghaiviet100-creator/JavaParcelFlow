@@ -72,7 +72,7 @@ export default function CreateOrderPage() {
       return createOrderApi(payload);
     },
     onSuccess: (res) => {
-      router.push(`/dashboard/orders/${res.data.id}`);
+      router.push(`/orders/${res.data.id}`);
     },
     onError: (err) => {
       setBanner(err instanceof ApiError ? err.message : "Could not create the order.");

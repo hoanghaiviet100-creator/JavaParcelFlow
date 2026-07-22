@@ -93,7 +93,7 @@ export default function ParcelScanPage() {
           <div style={{ fontSize: "0.875rem" }}>
             <strong>{found.parcelCode}</strong> — currently{" "}
             <span style={{ color: "var(--color-primary)" }}>{found.status}</span>{" "}
-            (<Link href={`/dashboard/parcels/${found.id}`} style={{ color: "var(--color-primary)" }}>details</Link>)
+            (<Link href={`/parcels/${found.id}`} style={{ color: "var(--color-primary)" }}>details</Link>)
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
             <label style={{ fontSize: "0.875rem", fontWeight: 600 }}>Scan Event / New Status</label>
