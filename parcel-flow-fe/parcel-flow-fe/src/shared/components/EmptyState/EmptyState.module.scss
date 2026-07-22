@@ -1,0 +1,40 @@
+@import "../../../styles/settings/spacing";
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-xxl $spacing-xl;
+  text-align: center;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  width: 100%;
+}
+
+.icon {
+  font-size: 2.5rem;
+  margin-bottom: $spacing-sm;
+  opacity: 0.6;
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-bottom: $spacing-xxs;
+}
+
+.description {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  max-width: 360px;
+  line-height: 1.5;
+  margin-bottom: $spacing-md;
+}
+
+.action {
+  display: flex;
+  justify-content: center;
+}

@@ -1,0 +1,18 @@
+@import "../settings/colors";
+@import "../settings/typography";
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: $font-family-body;
+  font-size: $font-size-base;
+  font-weight: $font-weight-normal;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: $font-family-heading;
+  color: var(--color-text-primary);
+  font-weight: $font-weight-semibold;
+  line-height: 1.25;
+}

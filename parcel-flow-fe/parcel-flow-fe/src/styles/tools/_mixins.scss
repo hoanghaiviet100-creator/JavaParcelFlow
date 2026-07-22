@@ -1,0 +1,45 @@
+@import "../settings/breakpoints";
+
+// Media queries mixin
+@mixin respond-to($breakpoint) {
+  @if $breakpoint == xs {
+    @media #{$media-xs} { @content; }
+  } @else if $breakpoint == sm {
+    @media #{$media-sm} { @content; }
+  } @else if $breakpoint == md {
+    @media #{$media-md} { @content; }
+  } @else if $breakpoint == lg {
+    @media #{$media-lg} { @content; }
+  } @else if $breakpoint == xl {
+    @media #{$media-xl} { @content; }
+  } @else if $breakpoint == xxl {
+    @media #{$media-xxl} { @content; }
+  }
+}
+
+// Flex center mixin
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Text truncate mixin
+@mixin truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Visually hidden helper (for screenreaders)
+@mixin visually-hidden-mixin {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

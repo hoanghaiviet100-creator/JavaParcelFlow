@@ -1,0 +1,105 @@
+server:
+  port: 8080
+  forward-headers-strategy: framework   # honour proxy headers via Spring's ForwardedHeaderFilter
+
+spring:
+  application:
+    name: parcel-flow
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3307/parcel_flow?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:admin123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+    show-sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: parcel-flow
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.parcelflow.messaging"
+    listener:
+      missing-topics-fatal: false
+
+  # SMTP (Phase 4). Defaults are inert; override via env for a real provider.
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:false}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+# ---- Application config ----
+jwt:
+  # HS256 needs >= 32 bytes. MUST be overridden in production via JWT_SECRET.
+  secret: ${JWT_SECRET:change-me-parcel-flow-super-secret-key-please-override-0123456789}
+  access-token-ttl-seconds: ${JWT_ACCESS_TTL:900}       # 15 minutes
+  refresh-token-ttl-seconds: ${JWT_REFRESH_TTL:604800}  # 7 days
+
+app:
+  temp-password-ttl-seconds: ${TEMP_PASSWORD_TTL:86400}   # 24 hours
+  lockout:
+    max-attempts: ${LOCKOUT_MAX_ATTEMPTS:3}
+    temp-lock-seconds: ${LOCKOUT_TEMP_LOCK:900}            # 15 minutes
+    escalation-window-seconds: ${LOCKOUT_ESCALATION_WINDOW:86400}  # 24 hours
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+    from: ${MAIL_FROM:no-reply@parcelflow.local}
+  bootstrap-admin:
+    enabled: ${BOOTSTRAP_ADMIN_ENABLED:true}
+    email: ${BOOTSTRAP_ADMIN_EMAIL:admin@parcelflow.local}
+    password: ${BOOTSTRAP_ADMIN_PASSWORD:Admin@12345}
+
+logging:
+  level:
+    org.flywaydb: INFO

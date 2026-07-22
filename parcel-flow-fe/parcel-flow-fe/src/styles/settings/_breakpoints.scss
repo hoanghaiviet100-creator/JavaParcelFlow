@@ -1,0 +1,23 @@
+// Responsive design breakpoints
+$breakpoint-xs: 480px;
+$breakpoint-sm: 640px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+$breakpoint-xl: 1280px;
+$breakpoint-xxl: 1536px;
+
+// Media query helpers (min-width)
+$media-xs: "(min-width: #{$breakpoint-xs})";
+$media-sm: "(min-width: #{$breakpoint-sm})";
+$media-md: "(min-width: #{$breakpoint-md})";
+$media-lg: "(min-width: #{$breakpoint-lg})";
+$media-xl: "(min-width: #{$breakpoint-xl})";
+$media-xxl: "(min-width: #{$breakpoint-xxl})";
+
+// Media query helpers (max-width)
+$media-max-xs: "(max-width: #{$breakpoint-xs - 0.02px})";
+$media-max-sm: "(max-width: #{$breakpoint-sm - 0.02px})";
+$media-max-md: "(max-width: #{$breakpoint-md - 0.02px})";
+$media-max-lg: "(max-width: #{$breakpoint-lg - 0.02px})";
+$media-max-xl: "(max-width: #{$breakpoint-xl - 0.02px})";
+$media-max-xxl: "(max-width: #{$breakpoint-xxl - 0.02px})";

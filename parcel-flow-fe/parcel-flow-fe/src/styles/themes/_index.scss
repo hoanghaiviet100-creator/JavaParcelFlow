@@ -1,0 +1,18 @@
+@import "light";
+@import "dark";
+
+:root,
+[data-theme="light"] {
+  @include theme-light;
+}
+
+[data-theme="dark"] {
+  @include theme-dark;
+}
+
+// If theme is not explicitly overridden, default to system preference
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    @include theme-dark;
+  }
+}

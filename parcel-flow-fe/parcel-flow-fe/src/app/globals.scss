@@ -1,0 +1,30 @@
+// ==========================================================================
+// GLOBALS.SCSS
+// Central master stylesheet importing ITCSS architecture layers.
+// ==========================================================================
+
+// 1. Settings (Design variables, scales, and media bounds)
+@import "../styles/settings/colors";
+@import "../styles/settings/typography";
+@import "../styles/settings/spacing";
+@import "../styles/settings/breakpoints";
+
+// 2. Tools (Helper functions and mixins)
+@import "../styles/tools/functions";
+@import "../styles/tools/mixins";
+
+// 3. Generic (CSS resets)
+@import "../styles/generic/reset";
+
+// 4. Elements (Unclassed HTML element style rules)
+@import "../styles/elements/body";
+
+// 5. Themes (CSS custom properties light/dark system)
+@import "../styles/themes/index";
+
+// 6. Utilities (Helper classes)
+@import "../styles/utilities/container";
+@import "../styles/utilities/visually-hidden";
+
+// 7. Vendors (Ant Design overrides placeholder)
+@import "../styles/vendors/antd";

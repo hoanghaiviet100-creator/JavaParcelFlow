@@ -1,0 +1,36 @@
+@import "../../../styles/settings/spacing";
+
+.wrapper {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-md;
+  margin-bottom: $spacing-xl;
+  padding-bottom: $spacing-md;
+  border-bottom: 1px solid var(--color-border);
+  width: 100%;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xxs;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.subtitle {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.action {
+  display: flex;
+  align-items: center;
+}

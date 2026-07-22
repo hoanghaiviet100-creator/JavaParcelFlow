@@ -1,0 +1,28 @@
+@import "../settings/breakpoints";
+@import "../settings/spacing";
+
+.container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: $layout-padding-mobile;
+  padding-right: $layout-padding-mobile;
+
+  @media #{$media-sm} {
+    max-width: 640px;
+  }
+  @media #{$media-md} {
+    max-width: 768px;
+  }
+  @media #{$media-lg} {
+    max-width: 1024px;
+    padding-left: $layout-padding-desktop;
+    padding-right: $layout-padding-desktop;
+  }
+  @media #{$media-xl} {
+    max-width: 1280px;
+  }
+  @media #{$media-xxl} {
+    max-width: 1536px;
+  }
+}

@@ -1,0 +1,125 @@
+@import "../../../styles/settings/spacing";
+
+.title {
+  font-family: var(--font-be-vietnam-pro);
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-bottom: $spacing-xs;
+  color: var(--color-text-primary);
+  text-align: center;
+}
+
+.subtitle {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
+  margin-bottom: $spacing-xl;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.errorAlert {
+  background-color: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-input);
+  padding: $spacing-md;
+  color: var(--color-error);
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  animation: shake 0.4s ease-in-out;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  margin: $spacing-lg 0;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+
+  &::before,
+  &::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background-color: var(--color-border);
+  }
+
+  span {
+    padding: 0 $spacing-md;
+  }
+}
+
+.quickLoginSection {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.quickLoginLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: center;
+  margin-bottom: $spacing-xs;
+}
+
+.quickLoginGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: $spacing-xs;
+}
+
+.quickLoginBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: $spacing-sm $spacing-md;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+
+  &:hover {
+    border-color: var(--color-primary);
+    background-color: rgba(37, 99, 235, 0.04);
+    transform: translateY(-1px);
+
+    [data-theme="dark"] & {
+      background-color: rgba(255, 255, 255, 0.02);
+    }
+  }
+
+  .roleTitle {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: 2px;
+  }
+
+  .roleEmail {
+    font-size: 0.6875rem;
+    color: var(--color-text-secondary);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}

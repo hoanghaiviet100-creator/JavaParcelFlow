@@ -1,0 +1,51 @@
+@import "../../../styles/settings/spacing";
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-xl;
+  text-align: center;
+  border: 1px dashed var(--color-error);
+  border-radius: var(--radius-card);
+  background-color: rgba(239, 68, 68, 0.02);
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.icon {
+  font-size: 2rem;
+  margin-bottom: $spacing-xs;
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-error);
+  margin-bottom: $spacing-xxs;
+}
+
+.message {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin-bottom: $spacing-md;
+}
+
+.retryBtn {
+  padding: $spacing-sm $spacing-md;
+  border-radius: var(--radius-button);
+  border: 1px solid var(--color-error);
+  background-color: var(--color-surface);
+  color: var(--color-error);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background-color: var(--color-error);
+    color: #FFFFFF;
+  }
+}
