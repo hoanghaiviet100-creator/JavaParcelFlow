@@ -191,16 +191,24 @@ compose build contexts point at the inner folder.
 
 Worth stating plainly rather than discovering during a demo.
 
-- **Dashboard figures are placeholders.** The counters on the staff dashboard
+- **Dashboard figures are placeholders.** The counters on every role dashboard
   ("142 registered today" and similar) are hard-coded in
   `src/app/(dashboard)/dashboard/page.tsx`. No aggregate endpoint backs them yet.
+  Every other page shows real data from the API.
 - **No fee calculation.** `orders.total_fee` is stored but always written as
   zero; there is no pricing engine.
-- **Route plans and delivery assignments are read-only over HTTP.** The tables,
-  entities and repositories exist and the read endpoints work, but nothing
-  creates a route plan or assigns a shipper through the API — that has to be
-  done in SQL for now. The standalone schema file includes
-  `sp_assign_shipper` for exactly this.
+- **Route plans and delivery assignments are read-only.** Both list pages render
+  live API data, but nothing *creates* a route plan or assigns a parcel to a
+  shipper over HTTP — that has to be done in SQL for now. The standalone schema
+  file includes `sp_assign_shipper` for exactly this. Once an assignment exists,
+  the shipper's own screens drive it to completion normally.
+- **Addresses are entered as raw ids.** The create-order form asks for
+  "Sender District ID" and "Sender Province ID" as numbers, because the backend
+  exposes no province/district/ward endpoint for the frontend to build pickers
+  from. With the seeded data: province 1 = HCMC (districts 1–4), 2 = Ha Noi
+  (5–6), 3 = Da Nang (7).
+- **`/hubs/[id]` is a stub.** It shows the hub id and a placeholder; the list at
+  `/hubs` is fully populated.
 - **Parcel status transitions are not validated by the application.** Any status
   is accepted, so a delivered parcel can be moved back to created. The
   standalone schema file encodes the legal state machine; the Java layer does

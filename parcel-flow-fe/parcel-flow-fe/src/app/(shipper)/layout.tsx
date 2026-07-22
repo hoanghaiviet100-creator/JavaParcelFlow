@@ -4,9 +4,9 @@ import { ReactNode, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/store/store";
-import { logoutSuccess } from "@/store/slices/authSlice";
 import { setThemeMode } from "@/store/slices/themeSlice";
 import LoadingState from "@/shared/components/LoadingState";
+import useAuth from "@/features/auth/hooks/useAuth";
 import styles from "./layout.module.scss";
 
 interface LayoutProps {
@@ -20,6 +20,7 @@ export default function ShipperLayout({ children }: LayoutProps) {
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
   const isLoading = useAppSelector((state) => state.auth.isLoading);
   const themeMode = useAppSelector((state) => state.theme.mode);
+  const { logout } = useAuth();
 
   useEffect(() => {
     if (!isLoading) {
@@ -31,9 +32,9 @@ export default function ShipperLayout({ children }: LayoutProps) {
     }
   }, [isLoading, isAuthenticated, user, router]);
 
+  /** See the note in DashboardLayout: this had the same incomplete logout. */
   const handleLogout = () => {
-    dispatch(logoutSuccess());
-    router.push("/login");
+    void logout();
   };
 
   const toggleTheme = () => {

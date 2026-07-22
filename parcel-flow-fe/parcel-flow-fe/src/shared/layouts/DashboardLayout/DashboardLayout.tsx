@@ -4,10 +4,10 @@ import { ReactNode, useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/store/store";
-import { logoutSuccess } from "@/store/slices/authSlice";
 import { setThemeMode } from "@/store/slices/themeSlice";
 import { DASHBOARD_ROUTES } from "@/shared/routes/dashboard-routes";
 import LoadingState from "@/shared/components/LoadingState";
+import useAuth from "@/features/auth/hooks/useAuth";
 import styles from "./DashboardLayout.module.scss";
 
 interface DashboardLayoutProps {
@@ -23,6 +23,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const isLoading = useAppSelector((state) => state.auth.isLoading);
   const themeMode = useAppSelector((state) => state.theme.mode);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const { logout } = useAuth();
 
   useEffect(() => {
     if (!isLoading) {
@@ -34,9 +35,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   }, [isLoading, isAuthenticated, user, router]);
 
+  /**
+   * Delegates to useAuth().logout, which revokes the session server-side,
+   * clears the stored JWTs, resets Redux and the query cache, then redirects.
+   *
+   * This used to dispatch logoutSuccess() and push /login by itself. That only
+   * wiped the Redux slice: the access and refresh tokens stayed in
+   * localStorage and the server session stayed alive for its full refresh TTL,
+   * so "logging out" on a shared machine left a working credential behind and
+   * the guard would bounce the next visitor straight back into the session.
+   */
   const handleLogout = () => {
-    dispatch(logoutSuccess());
-    router.push("/login");
+    void logout();
   };
 
   const toggleTheme = () => {

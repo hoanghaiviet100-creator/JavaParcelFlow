@@ -1,13 +1,17 @@
 package com.parcelflow.logistics.service;
 
 import com.parcelflow.common.enums.DeliveryAssignmentStatus;
+import com.parcelflow.common.enums.ParcelStatus;
 import com.parcelflow.common.error.ApiException;
 import com.parcelflow.common.error.ErrorCode;
 import com.parcelflow.domain.DeliveryAssignment;
 import com.parcelflow.domain.Parcel;
+import com.parcelflow.domain.ShipperProfile;
 import com.parcelflow.logistics.dto.DeliveryAssignmentResponse;
+import com.parcelflow.logistics.dto.UpdateParcelStatusRequest;
 import com.parcelflow.repository.DeliveryAssignmentRepository;
 import com.parcelflow.repository.ParcelRepository;
+import com.parcelflow.repository.ShipperProfileRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +27,8 @@ public class DeliveryAssignmentService {
 
     private final DeliveryAssignmentRepository assignmentRepository;
     private final ParcelRepository parcelRepository;
+    private final ShipperProfileRepository shipperProfileRepository;
+    private final ParcelService parcelService;
 
     /** The delivery queue for one shipper (their own tasks). */
     @Transactional(readOnly = true)
@@ -61,7 +67,46 @@ public class DeliveryAssignmentService {
             default -> { /* no timestamp side-effect */ }
         }
         assignmentRepository.save(assignment);
+
+        propagateToParcel(assignment, next, shipperId);
+
         return toResponse(assignment);
+    }
+
+    /**
+     * Carry the parcel along with its assignment.
+     *
+     * <p>Without this, a shipper marking the assignment DELIVERED left the
+     * parcel stuck at OUT_FOR_DELIVERY forever: no custody entry, no tracking
+     * event, and the customer page never showed the delivery. Routing through
+     * {@link ParcelService#updateStatus} keeps a single write path for status
+     * changes — custody log, current state, timeline and the order roll-up all
+     * happen exactly as they would for a hub scan.
+     *
+     * <p>ACCEPTED and PICKED_UP have no parcel-side equivalent (the parcel is
+     * already ASSIGNED_TO_SHIPPER), and CANCELLED intentionally leaves the
+     * parcel as-is for the dispatcher to reassign.
+     */
+    private void propagateToParcel(DeliveryAssignment assignment,
+                                   DeliveryAssignmentStatus next, Long shipperId) {
+        ParcelStatus parcelStatus = switch (next) {
+            case OUT_FOR_DELIVERY -> ParcelStatus.OUT_FOR_DELIVERY;
+            case DELIVERED -> ParcelStatus.DELIVERED;
+            case FAILED -> ParcelStatus.DELIVERY_FAILED;
+            case RETURNED_TO_HUB -> ParcelStatus.RETURNING;
+            default -> null;
+        };
+        if (parcelStatus == null) {
+            return;
+        }
+
+        UpdateParcelStatusRequest req = new UpdateParcelStatusRequest();
+        req.setStatus(parcelStatus);
+        req.setHubId(shipperProfileRepository.findById(shipperId)
+                .map(ShipperProfile::getHubId)
+                .orElse(null));
+        req.setNote("Delivery assignment #" + assignment.getId() + " " + next.name());
+        parcelService.updateStatus(assignment.getParcelId(), req, shipperId);
     }
 
     private DeliveryAssignmentResponse toResponse(DeliveryAssignment a) {
