@@ -105,10 +105,12 @@ services:
     ports:
       - "8080:8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      # Readiness (DB + Redis), not the full aggregate — mail must not gate it.
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health/readiness"]
       interval: 15s
       timeout: 5s
       retries: 10
+      start_period: 40s
 
   frontend:
     build:

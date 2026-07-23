@@ -76,6 +76,21 @@ management:
   endpoint:
     health:
       show-details: never
+      # Probe groups. The readiness group is what the container HEALTHCHECK and
+      # orchestrators watch: it covers the datastores the API cannot serve
+      # without (DB, Redis) but deliberately excludes mail. A transient SMTP
+      # outage degrades email delivery, which is already decoupled through Kafka,
+      # and must not report the whole API as unhealthy and pull it from rotation.
+      group:
+        readiness:
+          include: db, redis, ping
+        liveness:
+          include: ping
+  health:
+    mail:
+      # Keep the mail indicator out of the top-level aggregate for the same
+      # reason; it can still be inspected explicitly if needed.
+      enabled: false
 
 # ---- Application config ----
 jwt:
@@ -99,6 +114,17 @@ app:
     enabled: ${BOOTSTRAP_ADMIN_ENABLED:true}
     email: ${BOOTSTRAP_ADMIN_EMAIL:admin@parcelflow.local}
     password: ${BOOTSTRAP_ADMIN_PASSWORD:Admin@12345}
+
+  # Per-IP throttle on the unauthenticated surfaces (RateLimitFilter). Defaults
+  # are generous; lower them in production. The per-account lockout is the
+  # precise control — this is only a volume backstop.
+  rate-limit:
+    login:
+      max-requests: ${RATE_LIMIT_LOGIN_MAX:30}
+      window-seconds: ${RATE_LIMIT_LOGIN_WINDOW:60}
+    tracking:
+      max-requests: ${RATE_LIMIT_TRACKING_MAX:60}
+      window-seconds: ${RATE_LIMIT_TRACKING_WINDOW:60}
 
 logging:
   level:
