@@ -47,6 +47,8 @@ class ChangePasswordLockoutIT {
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "none");
         registry.add("app.bootstrap-admin.enabled", () -> "false");
+        // Not testing the login throttle here; keep it out of the way.
+        registry.add("app.rate-limit.login.max-requests", () -> "100000");
     }
 
     @Autowired

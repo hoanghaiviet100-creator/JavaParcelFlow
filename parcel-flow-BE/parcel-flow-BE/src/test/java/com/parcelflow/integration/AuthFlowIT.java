@@ -48,6 +48,9 @@ class AuthFlowIT {
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "none");
         registry.add("app.bootstrap-admin.enabled", () -> "false");
+        // The per-IP login throttle is not under test here; keep it clear of the
+        // repeated login attempts this class makes.
+        registry.add("app.rate-limit.login.max-requests", () -> "100000");
     }
 
     @Autowired

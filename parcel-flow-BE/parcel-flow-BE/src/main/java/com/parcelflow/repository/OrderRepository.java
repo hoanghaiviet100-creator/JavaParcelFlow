@@ -9,4 +9,6 @@ import java.util.Optional;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findByOrderCode(String orderCode);
+
+    long countByCreatedAtGreaterThanEqual(java.time.LocalDateTime start);
 }

@@ -10,4 +10,6 @@ import java.util.List;
 public interface DeliveryAssignmentRepository extends JpaRepository<DeliveryAssignment, Long> {
 
     List<DeliveryAssignment> findByShipperIdOrderByAssignedAtDesc(Long shipperId);
+
+    long countByStatusIn(java.util.Collection<com.parcelflow.common.enums.DeliveryAssignmentStatus> statuses);
 }

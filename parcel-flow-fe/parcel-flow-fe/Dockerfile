@@ -32,8 +32,10 @@ USER node
 
 EXPOSE 3000
 
-# wget ships with the alpine base; curl does not.
+# wget ships with the alpine base; curl does not. Use 127.0.0.1, not
+# "localhost": inside the container localhost resolves to ::1 first and the
+# Node server listens on IPv4 only, so a localhost probe fails spuriously.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
-  CMD wget -qO- http://localhost:3000/login >/dev/null 2>&1 || exit 1
+  CMD wget -qO- http://127.0.0.1:3000/login >/dev/null 2>&1 || exit 1
 
 CMD ["node", "server.js"]

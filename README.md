@@ -98,20 +98,45 @@ this anywhere real — see the `environment:` block in `docker-compose.yml`.
 
 ## Tests
 
+Both layers are tested, and both run in CI (`.github/workflows/ci.yml`) on every
+push and pull request.
+
+### Backend — unit + integration
+
 ```bash
 docker compose up -d mysql redis kafka mailhog
 mvn -f parcel-flow-BE/parcel-flow-BE/pom.xml verify
 ```
 
-`verify` runs both layers: unit tests under Surefire, then the Testcontainers
-integration tests under Failsafe (these start their own throwaway MySQL and
-Redis, so Docker must be available).
+`verify` runs unit tests under Surefire, then the integration tests under
+Failsafe. The ITs start their own throwaway MySQL and Redis via Testcontainers
+(Docker must be available) and cover the login/lockout flows, the order →
+parcel → custody → tracking workflow, the validation and error-mapping rules,
+the role-authorisation matrix, PII gating on public tracking, and the rate
+limiter.
 
 No local Maven? Run it in a container:
 
 ```bash
 docker run --rm -v //var/run/docker.sock:/var/run/docker.sock -v "$PWD/parcel-flow-BE/parcel-flow-BE:/app" -w /app -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal maven:3.9-eclipse-temurin-17 mvn -B verify
 ```
+
+### Frontend — end-to-end (Playwright)
+
+Drives a real browser against the running stack, so it catches broken routes,
+guards and flows that unit tests miss. Bring the stack up first:
+
+```bash
+docker compose up -d --build
+cd parcel-flow-fe/parcel-flow-fe
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+Specs live in `parcel-flow-fe/parcel-flow-fe/e2e/`: login and logout, the
+role-guard redirect, creating an order through the form and landing on its
+detail page, public tracking PII gating, and the admin account screens.
 
 ---
 
@@ -193,10 +218,6 @@ compose build contexts point at the inner folder.
 
 Worth stating plainly rather than discovering during a demo.
 
-- **Dashboard figures are placeholders.** The counters on every role dashboard
-  ("142 registered today" and similar) are hard-coded in
-  `src/app/(dashboard)/dashboard/page.tsx`. No aggregate endpoint backs them yet.
-  Every other page shows real data from the API.
 - **No fee calculation.** `orders.total_fee` is stored but always written as
   zero; there is no pricing engine.
 - **Route plans and delivery assignments are read-only.** Both list pages render

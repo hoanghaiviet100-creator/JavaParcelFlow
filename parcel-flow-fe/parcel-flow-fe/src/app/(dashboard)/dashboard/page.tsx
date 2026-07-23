@@ -1,12 +1,27 @@
 "use client";
 
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { useAppSelector } from "@/store/store";
+import { getStatsOverviewApi } from "@/features/stats/api/stats.api";
 import styles from "./dashboard.module.scss";
 
 export default function DashboardPage() {
   const user = useAppSelector((state) => state.auth.user);
   const role = user?.role || "ADMIN";
+
+  // Live counts for the KPI cards. These used to be hard-coded ("142 registered
+  // today"); every figure below now comes from GET /api/v1/stats/overview.
+  const { data, isLoading } = useQuery({
+    queryKey: ["stats-overview"],
+    queryFn: getStatsOverviewApi,
+    retry: false,
+  });
+  const stats = data?.data;
+
+  // While loading (or if the call fails) show a dash rather than a wrong number.
+  const fmt = (n: number | undefined) =>
+    isLoading ? "…" : n === undefined ? "—" : n.toLocaleString();
 
   // ==========================================
   // VIEW RENDERERS BY ROLE
@@ -14,10 +29,10 @@ export default function DashboardPage() {
 
   const renderAdminDashboard = () => {
     const kpiData = [
-      { title: "Active Logistics Users", val: "48", icon: "👤", note: "12 drivers active right now" },
-      { title: "Operational Hubs", val: "6", icon: "🏢", note: "All regional hubs online" },
-      { title: "Total Dynamic Orders", val: "1,249", icon: "📦", note: "+12% increase from yesterday" },
-      { title: "Pending Deliveries", val: "184", icon: "⚡", note: "98.8% on-time SLA status" },
+      { title: "Logistics Users", val: fmt(stats?.totalUsers), icon: "👤", note: "Accounts across all roles" },
+      { title: "Operational Hubs", val: fmt(stats?.activeHubs), icon: "🏢", note: "Active hubs in the network" },
+      { title: "Total Orders", val: fmt(stats?.totalOrders), icon: "📦", note: `${fmt(stats?.ordersToday)} created today` },
+      { title: "Pending Deliveries", val: fmt(stats?.pendingDeliveries), icon: "⚡", note: "Parcels out for last-mile" },
     ];
 
     const quickActions = [
@@ -81,9 +96,9 @@ export default function DashboardPage() {
 
   const renderHubStaffDashboard = () => {
     const kpiData = [
-      { title: "Registered Today", val: "142", icon: "📝", note: "Parcels signed in at counter" },
-      { title: "Pending Inbound Scans", val: "38", icon: "📥", note: "Transit parcels arriving soon" },
-      { title: "Outbound Dispatches", val: "84", icon: "📤", note: "Handed over to transit couriers" },
+      { title: "Orders Today", val: fmt(stats?.ordersToday), icon: "📝", note: "Created across the network today" },
+      { title: "Pending Inbound", val: fmt(stats?.parcelsInboundPending), icon: "📥", note: "Parcels awaiting an intake scan" },
+      { title: "In Transit", val: fmt(stats?.parcelsInTransit), icon: "📤", note: "Parcels moving between hubs" },
     ];
 
     const quickActions = [
@@ -97,7 +112,7 @@ export default function DashboardPage() {
         <div className={styles.header}>
           <h1 className={styles.title}>Hub Scanning & Intake Desk</h1>
           <p className={styles.subtitle}>
-            Active location: <strong style={{ color: "var(--color-primary)" }}>HN-CENTRAL-HUB-01</strong>
+            Register intake and hand-offs, and follow parcels through your hub.
           </p>
         </div>
 
@@ -147,9 +162,9 @@ export default function DashboardPage() {
 
   const renderDispatcherDashboard = () => {
     const kpiData = [
-      { title: "Open Dispatch Queues", val: "8", icon: "🗺️", note: "Routing tables recalculating..." },
-      { title: "Unrouted Parcels", val: "67", icon: "📦", note: "Awaiting sorting assignments" },
-      { title: "Active Transit Runs", val: "14", icon: "🚛", note: "Hub-to-hub trucks in transit" },
+      { title: "Route Plans", val: fmt(stats?.openRoutePlans), icon: "🗺️", note: "Plans in the system" },
+      { title: "Awaiting Route", val: fmt(stats?.parcelsWaitingForRoute), icon: "📦", note: "Parcels needing a route" },
+      { title: "Open Assignments", val: fmt(stats?.openAssignments), icon: "🚛", note: "Deliveries in progress" },
     ];
 
     const quickActions = [
