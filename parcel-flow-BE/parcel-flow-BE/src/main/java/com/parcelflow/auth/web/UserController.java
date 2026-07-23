@@ -2,10 +2,15 @@ package com.parcelflow.auth.web;
 
 import com.parcelflow.auth.dto.CreateUserRequest;
 import com.parcelflow.auth.dto.CreateUserResponse;
+import com.parcelflow.auth.dto.UserResponse;
 import com.parcelflow.auth.service.AuthService;
+import com.parcelflow.auth.service.UserQueryService;
 import com.parcelflow.common.api.ApiResponse;
+import com.parcelflow.common.api.PageResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,6 +23,23 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final AuthService authService;
+    private final UserQueryService userQueryService;
+
+    /**
+     * Paged account list. The controller-level @PreAuthorize("hasRole('ADMIN')")
+     * covers this, matching the write endpoints below.
+     */
+    @GetMapping
+    public ResponseEntity<ApiResponse<PageResponse<UserResponse>>> list(
+            @PageableDefault(size = 20) Pageable pageable) {
+        PageResponse<UserResponse> page = PageResponse.from(userQueryService.list(pageable));
+        return ResponseEntity.ok(ApiResponse.success(page, "OK"));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<UserResponse>> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(userQueryService.getById(id), "OK"));
+    }
 
     @PostMapping
     public ResponseEntity<ApiResponse<CreateUserResponse>> createUser(@Valid @RequestBody CreateUserRequest request) {

@@ -89,8 +89,10 @@ this anywhere real — see the `environment:` block in `docker-compose.yml`.
 5. **Create a user** as the admin and watch the temporary password arrive in
    Mailhog at http://localhost:8025. That mail travels Kafka → consumer → SMTP.
    The new account cannot log in until it changes the password.
-6. **Trip the lockout**: three wrong passwords returns `423 Locked`. Unlock it
-   from the admin endpoint.
+6. **Trip the lockout**: three wrong passwords returns `423 Locked`. After the
+   temporary lock lapses, three more failures lock the account permanently and
+   write the reason to `users.lock_reason`. Open the account from `/users`, and
+   clear it with **Unlock account** on its detail page.
 
 ---
 
@@ -207,8 +209,6 @@ Worth stating plainly rather than discovering during a demo.
   exposes no province/district/ward endpoint for the frontend to build pickers
   from. With the seeded data: province 1 = HCMC (districts 1–4), 2 = Ha Noi
   (5–6), 3 = Da Nang (7).
-- **`/hubs/[id]` is a stub.** It shows the hub id and a placeholder; the list at
-  `/hubs` is fully populated.
 - **Parcel status transitions are not validated by the application.** Any status
   is accepted, so a delivered parcel can be moved back to created. The
   standalone schema file encodes the legal state machine; the Java layer does

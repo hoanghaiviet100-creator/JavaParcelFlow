@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import useRoleGuard from "@/shared/hooks/useRoleGuard";
 import { listHubsApi } from "@/features/hubs/api/hubs.api";
@@ -55,7 +56,11 @@ export default function HubsListPage() {
             <tbody>
               {hubs.map((h) => (
                 <tr key={h.id} style={{ borderTop: "1px solid var(--color-border)" }}>
-                  <td style={{ padding: "0.75rem 1rem", fontWeight: 600 }}>{h.code}</td>
+                  <td style={{ padding: "0.75rem 1rem", fontWeight: 600 }}>
+                    <Link href={`/hubs/${h.id}`} style={{ color: "var(--color-primary)" }}>
+                      {h.code}
+                    </Link>
+                  </td>
                   <td style={{ padding: "0.75rem 1rem" }}>{h.name}</td>
                   <td style={{ padding: "0.75rem 1rem" }}>{h.type}</td>
                   <td style={{ padding: "0.75rem 1rem", color: "var(--color-text-secondary)" }}>{h.addressLine}</td>

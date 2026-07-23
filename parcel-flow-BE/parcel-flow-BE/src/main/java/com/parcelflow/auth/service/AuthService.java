@@ -44,6 +44,7 @@ public class AuthService {
     private final PasswordPolicy passwordPolicy;
     private final TempPasswordGenerator tempPasswordGenerator;
     private final EmailEventPublisher emailEventPublisher;
+    private final AccountLockService accountLockService;
 
     @Value("${app.temp-password-ttl-seconds}")
     private long tempPasswordTtlSeconds;
@@ -280,12 +281,15 @@ public class AuthService {
         sessionService.invalidate(userId);
     }
 
-    /** Persist permanent-lock status + metadata to the DB (Phase 6). */
+    /**
+     * Persist permanent-lock status + metadata to the DB.
+     *
+     * <p>Delegated to {@link AccountLockService}, which commits in a transaction
+     * of its own. Writing it here meant the ApiException thrown immediately
+     * afterwards rolled the lock straight back — see the note on that class.
+     */
     private void lockPermanently(User user, String reason) {
-        user.setIsActive(false);
-        user.setLockReason(reason);
-        user.setLockedAt(LocalDateTime.now());
-        userRepository.save(user);
+        accountLockService.lockPermanently(user.getId(), reason);
     }
 
     private String resolveRoleCode(User user) {
