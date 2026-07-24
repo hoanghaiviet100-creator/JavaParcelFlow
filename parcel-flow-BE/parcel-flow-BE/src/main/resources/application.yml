@@ -1,6 +1,12 @@
 server:
   port: 8080
-  forward-headers-strategy: framework   # honour proxy headers via Spring's ForwardedHeaderFilter
+  # Spring's ForwardedHeaderFilter rewrites the request — including
+  # getRemoteAddr() — from X-Forwarded-For, for EVERY caller, with no notion of
+  # which proxies are trustworthy. With it on, the peer address the rate limiter
+  # and the one-session-per-IP policy key on is whatever the client put in the
+  # header, so both are trivially bypassed. Off by default; turn it on only
+  # together with app.trusted-proxies, behind a proxy that overwrites the header.
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 spring:
   application:
@@ -107,6 +113,14 @@ app:
     escalation-window-seconds: ${LOCKOUT_ESCALATION_WINDOW:86400}  # 24 hours
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+  # Reverse proxies whose X-Forwarded-For header may be believed, as a
+  # comma-separated list of addresses or CIDR blocks (e.g. "10.0.0.0/8,192.168.1.5").
+  # EMPTY BY DEFAULT, which means the header is ignored and the peer address is
+  # used. Only set this when the app really does sit behind a proxy that
+  # OVERWRITES the header — anything listed here can choose the IP that the
+  # login throttle and the one-session-per-IP policy key on.
+  trusted-proxies: ${TRUSTED_PROXIES:}
   mail:
     enabled: ${MAIL_ENABLED:false}
     from: ${MAIL_FROM:no-reply@parcelflow.local}
