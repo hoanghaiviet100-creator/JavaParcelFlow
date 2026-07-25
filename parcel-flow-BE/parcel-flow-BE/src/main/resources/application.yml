@@ -109,6 +109,9 @@ app:
   temp-password-ttl-seconds: ${TEMP_PASSWORD_TTL:86400}   # 24 hours
   lockout:
     max-attempts: ${LOCKOUT_MAX_ATTEMPTS:3}
+    # How many 15-minute temporary locks an account may collect within the
+    # escalation window before the next failed burst locks it permanently.
+    max-temp-locks: ${LOCKOUT_MAX_TEMP_LOCKS:3}
     temp-lock-seconds: ${LOCKOUT_TEMP_LOCK:900}            # 15 minutes
     escalation-window-seconds: ${LOCKOUT_ESCALATION_WINDOW:86400}  # 24 hours
   cors:
