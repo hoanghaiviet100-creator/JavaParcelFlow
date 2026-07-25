@@ -2,7 +2,7 @@ package com.parcelflow.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.parcelflow.common.api.ApiResponse;
-import com.parcelflow.common.util.HttpUtils;
+import com.parcelflow.common.util.ClientIpResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,6 +35,11 @@ import java.util.List;
  * <p>Limits are env-tunable. Defaults are generous enough for a human and for
  * the project's own test bursts, but a tight enumeration loop trips them; lower
  * them in production via RATE_LIMIT_* to taste.
+ *
+ * <p>Buckets are keyed on the IP that {@link ClientIpResolver} resolves, which
+ * ignores {@code X-Forwarded-For} unless the peer is a configured trusted proxy.
+ * Keying on a client-supplied header would let a caller mint a fresh bucket per
+ * request and skip the throttle entirely.
  */
 @Slf4j
 @Component
@@ -43,6 +48,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimitService rateLimitService;
     private final ObjectMapper objectMapper;
+    private final ClientIpResolver clientIpResolver;
 
     private final int loginLimit;
     private final int loginWindow;
@@ -51,12 +57,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     public RateLimitFilter(RateLimitService rateLimitService,
                            ObjectMapper objectMapper,
+                           ClientIpResolver clientIpResolver,
                            @Value("${app.rate-limit.login.max-requests:30}") int loginLimit,
                            @Value("${app.rate-limit.login.window-seconds:60}") int loginWindow,
                            @Value("${app.rate-limit.tracking.max-requests:60}") int trackingLimit,
                            @Value("${app.rate-limit.tracking.window-seconds:60}") int trackingWindow) {
         this.rateLimitService = rateLimitService;
         this.objectMapper = objectMapper;
+        this.clientIpResolver = clientIpResolver;
         this.loginLimit = loginLimit;
         this.loginWindow = loginWindow;
         this.trackingLimit = trackingLimit;
@@ -77,7 +85,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         int limit = bucket.equals("login") ? loginLimit : trackingLimit;
         int window = bucket.equals("login") ? loginWindow : trackingWindow;
-        String ip = HttpUtils.getClientIp(request);
+        String ip = clientIpResolver.getClientIp(request);
 
         if (!rateLimitService.tryAcquire(bucket, ip, limit, window)) {
             log.warn("Rate limit exceeded on {} from {}", bucket, ip);

@@ -229,7 +229,12 @@ export default function DashboardPage() {
   return (
     <div className={styles.container}>
       {role === "ADMIN" && renderAdminDashboard()}
-      {role === "HUB_STAFF" && renderHubStaffDashboard()}
+      {/*
+        HUB_MANAGER shares the hub-operations view with HUB_STAFF: its extra
+        permissions are administrative rather than a different daily console.
+        Without this branch a manager saw a blank page — no role matched.
+      */}
+      {(role === "HUB_STAFF" || role === "HUB_MANAGER") && renderHubStaffDashboard()}
       {role === "DISPATCHER" && renderDispatcherDashboard()}
     </div>
   );

@@ -11,9 +11,24 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * Parcel lookup and hub scanning.
+ *
+ * <p>Reads are open to any authenticated staff member. The status scan is not:
+ * it is the write that drives custody, the customer timeline and the order
+ * roll-up, so it is restricted to the roles the permission matrix grants
+ * UPDATE_PARCEL_STATUS — ADMIN, HUB_MANAGER and HUB_STAFF.
+ *
+ * <p>A SHIPPER is deliberately excluded here even though a shipper does move
+ * parcels: they do it through {@code PATCH /api/v1/shipper/assignments/{id}/status},
+ * which checks that the assignment is theirs and then propagates to the parcel
+ * internally. Reaching this endpoint directly would let any shipper set any
+ * parcel in the system to any status, bypassing that ownership check.
+ */
 @RestController
 @RequestMapping("/api/v1/parcels")
 @RequiredArgsConstructor
@@ -38,6 +53,7 @@ public class ParcelController {
         return ResponseEntity.ok(ApiResponse.success(parcelService.getById(id), "OK"));
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN','HUB_MANAGER','HUB_STAFF')")
     @PatchMapping("/{id}/status")
     public ResponseEntity<ApiResponse<ParcelResponse>> updateStatus(
             @PathVariable Long id,

@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.mapping.PropertyReferenceException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -79,6 +80,23 @@ public class GlobalExceptionHandler {
                 .map(v -> v.getPropertyPath() + ": " + v.getMessage())
                 .toList();
         return build(ErrorCode.VALIDATION_ERROR, "Validation failed", details, req);
+    }
+
+    /**
+     * {@code ?sort=} naming a property the entity does not have. Spring Data
+     * resolves the sort against the entity and throws before the query runs.
+     *
+     * <p>Unhandled, this surfaced as a 500 on every paged endpoint — a caller
+     * typo reported as a server fault — and the exception message names the
+     * mapped type ("No property 'foo' found for type 'Order'"), so the default
+     * handler also leaked the internal class name. The property the caller
+     * actually sent is echoed back; the entity it failed against is not.
+     */
+    @ExceptionHandler(PropertyReferenceException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBadSortProperty(PropertyReferenceException ex,
+                                                                   HttpServletRequest req) {
+        return build(ErrorCode.VALIDATION_ERROR, "Invalid sort property",
+                List.of("Unknown sort property: '" + ex.getPropertyName() + "'"), req);
     }
 
     /**

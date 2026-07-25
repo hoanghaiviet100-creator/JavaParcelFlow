@@ -71,6 +71,8 @@ public abstract class AbstractIT {
     protected static final String ADMIN_PW = "Admin@12345";
     protected static final String STAFF = "staff.hcm@parcelflow.local";
     protected static final String STAFF_PW = "Staff@12345";
+    protected static final String MANAGER = "manager.hcm@parcelflow.local";
+    protected static final String MANAGER_PW = "Manager@12345";
     protected static final String DISPATCHER = "dispatcher@parcelflow.local";
     protected static final String DISPATCHER_PW = "Dispatch@12345";
     protected static final String SHIPPER = "shipper1@parcelflow.local";

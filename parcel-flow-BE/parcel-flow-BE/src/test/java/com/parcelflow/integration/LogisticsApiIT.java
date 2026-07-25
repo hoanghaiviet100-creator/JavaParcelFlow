@@ -67,6 +67,30 @@ class LogisticsApiIT extends AbstractIT {
                 .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * A sort property the entity does not have is a caller typo, not a server
+     * fault. Spring Data's PropertyReferenceException was unhandled, so every
+     * paged endpoint answered 500 — and the default message names the mapped
+     * type, leaking the internal class name.
+     */
+    @Test
+    void unknownSortProperty_is400_notF500_andDoesNotLeakTheEntityName() {
+        String staff = token(STAFF, STAFF_PW);
+
+        for (String path : new String[]{
+                "/api/v1/orders?sort=nonexistentField",
+                "/api/v1/parcels?sort=bogus"}) {
+            ResponseEntity<String> r = get(path, staff);
+            assertThat(r.getStatusCode()).as("GET %s", path).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(json(r).path("error").path("code").asText()).isEqualTo("VALIDATION_ERROR");
+            assertThat(r.getBody()).doesNotContain("for type");
+        }
+
+        // A real property still sorts.
+        assertThat(get("/api/v1/orders?sort=orderCode,desc", staff).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+    }
+
     // One parcel, so the order's derived status can reach DELIVERED. An order
     // with several parcels only rolls up to DELIVERED once every parcel is
     // delivered — the derivation deliberately follows the least-advanced parcel.

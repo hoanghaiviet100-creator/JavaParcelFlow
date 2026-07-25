@@ -57,11 +57,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     setIsSidebarOpen(!isSidebarOpen);
   };
 
+  // HUB_MANAGER is a seeded, first-class role, but it appeared in none of these
+  // lists — a manager logged in successfully and got an empty sidebar over an
+  // empty dashboard. Its entries follow ROLE_PERMISSIONS in config/permissions.ts:
+  // the hub-operations surfaces (orders, parcels, hubs) but not route planning,
+  // deliveries or user administration.
   const menuItems = [
-    { name: "Overview", path: DASHBOARD_ROUTES.root, roles: ["ADMIN", "HUB_STAFF", "DISPATCHER"] },
-    { name: "Orders", path: DASHBOARD_ROUTES.orders, roles: ["ADMIN", "HUB_STAFF", "DISPATCHER"] },
-    { name: "Parcels", path: DASHBOARD_ROUTES.parcels, roles: ["ADMIN", "HUB_STAFF", "DISPATCHER"] },
-    { name: "Hubs", path: DASHBOARD_ROUTES.hubs, roles: ["ADMIN"] },
+    { name: "Overview", path: DASHBOARD_ROUTES.root, roles: ["ADMIN", "HUB_MANAGER", "HUB_STAFF", "DISPATCHER"] },
+    { name: "Orders", path: DASHBOARD_ROUTES.orders, roles: ["ADMIN", "HUB_MANAGER", "HUB_STAFF", "DISPATCHER"] },
+    { name: "Parcels", path: DASHBOARD_ROUTES.parcels, roles: ["ADMIN", "HUB_MANAGER", "HUB_STAFF", "DISPATCHER"] },
+    { name: "Hubs", path: DASHBOARD_ROUTES.hubs, roles: ["ADMIN", "HUB_MANAGER"] },
     { name: "Route Planning", path: DASHBOARD_ROUTES.routes, roles: ["ADMIN", "DISPATCHER"] },
     { name: "Deliveries", path: DASHBOARD_ROUTES.delivery, roles: ["ADMIN", "DISPATCHER"] },
     { name: "Users", path: DASHBOARD_ROUTES.users, roles: ["ADMIN"] },
