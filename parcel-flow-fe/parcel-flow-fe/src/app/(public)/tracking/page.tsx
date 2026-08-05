@@ -53,7 +53,7 @@ export default function TrackingPage() {
         <Input
           type="text"
           label="Order Code"
-          placeholder="e.g. ORD-1002495"
+          placeholder="e.g. OD20260805LJ2GJ9"
           error={errors.orderCode?.message}
           {...register("orderCode")}
         />
