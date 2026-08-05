@@ -14,6 +14,19 @@ export interface UpdateParcelStatusPayload {
   note?: string;
 }
 
+/**
+ * What the server will actually accept as this parcel's next status.
+ *
+ * `corrections` are supervisor-only repairs out of a final status (e.g. undoing a
+ * mis-scanned CANCELLED). It comes back empty for roles that may not perform them,
+ * so the caller can render whatever it is given without re-checking the role.
+ */
+export interface ParcelTransitionsResponse {
+  current: ParcelStatus;
+  allowed: ParcelStatus[];
+  corrections: ParcelStatus[];
+}
+
 /** GET /api/v1/parcels?page=&size= */
 export async function listParcelsApi(
   page = 0,
@@ -32,6 +45,13 @@ export async function getParcelApi(id: number | string): Promise<ApiEnvelope<Par
 /** GET /api/v1/parcels/by-code/{code} — used by the terminal scan page. */
 export async function getParcelByCodeApi(code: string): Promise<ApiEnvelope<ParcelResponse>> {
   return httpClient.get<ApiEnvelope<ParcelResponse>>(`/v1/parcels/by-code/${encodeURIComponent(code)}`);
+}
+
+/** GET /api/v1/parcels/{id}/transitions */
+export async function getParcelTransitionsApi(
+  id: number | string
+): Promise<ApiEnvelope<ParcelTransitionsResponse>> {
+  return httpClient.get<ApiEnvelope<ParcelTransitionsResponse>>(`/v1/parcels/${id}/transitions`);
 }
 
 /** PATCH /api/v1/parcels/{id}/status */

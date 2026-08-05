@@ -80,6 +80,16 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.<Void>success(null, "Order cancelled"));
     }
 
+    /**
+     * Undo a cancellation. Narrower than cancelling on purpose: HUB_STAFF may cancel
+     * an order they are taking in, but reversing one is a supervisor decision.
+     */
+    @PreAuthorize("hasAnyRole('ADMIN','HUB_MANAGER')")
+    @PostMapping("/{id}/reinstate")
+    public ResponseEntity<ApiResponse<OrderResponse>> reinstate(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.reinstate(id), "Order reinstated"));
+    }
+
     @GetMapping("/{id}/tracking-events")
     public ResponseEntity<ApiResponse<List<TrackingEventResponse>>> tracking(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(trackingService.listByOrder(id), "OK"));

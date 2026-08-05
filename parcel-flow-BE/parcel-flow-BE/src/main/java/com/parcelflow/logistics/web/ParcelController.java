@@ -3,6 +3,7 @@ package com.parcelflow.logistics.web;
 import com.parcelflow.common.api.ApiResponse;
 import com.parcelflow.common.api.PageResponse;
 import com.parcelflow.logistics.dto.ParcelResponse;
+import com.parcelflow.logistics.dto.ParcelTransitionsResponse;
 import com.parcelflow.logistics.dto.UpdateParcelStatusRequest;
 import com.parcelflow.logistics.service.ParcelService;
 import com.parcelflow.security.AuthPrincipal;
@@ -53,13 +54,29 @@ public class ParcelController {
         return ResponseEntity.ok(ApiResponse.success(parcelService.getById(id), "OK"));
     }
 
+    /**
+     * The statuses this parcel may move to next, for the calling role.
+     *
+     * <p>Open to the same roles as the scan itself. Supervisor-only repairs come back
+     * in a separate list, empty unless the caller may actually perform them.
+     */
+    @PreAuthorize("hasAnyRole('ADMIN','HUB_MANAGER','HUB_STAFF')")
+    @GetMapping("/{id}/transitions")
+    public ResponseEntity<ApiResponse<ParcelTransitionsResponse>> transitions(
+            @PathVariable Long id,
+            @AuthenticationPrincipal AuthPrincipal principal) {
+        ParcelTransitionsResponse response = parcelService.transitionsFor(id, principal.role());
+        return ResponseEntity.ok(ApiResponse.success(response, "OK"));
+    }
+
     @PreAuthorize("hasAnyRole('ADMIN','HUB_MANAGER','HUB_STAFF')")
     @PatchMapping("/{id}/status")
     public ResponseEntity<ApiResponse<ParcelResponse>> updateStatus(
             @PathVariable Long id,
             @Valid @RequestBody UpdateParcelStatusRequest request,
             @AuthenticationPrincipal AuthPrincipal principal) {
-        ParcelResponse response = parcelService.updateStatus(id, request, principal.userId());
+        ParcelResponse response = parcelService.updateStatus(id, request,
+                principal.userId(), principal.role());
         return ResponseEntity.ok(ApiResponse.success(response, "Parcel status updated"));
     }
 }

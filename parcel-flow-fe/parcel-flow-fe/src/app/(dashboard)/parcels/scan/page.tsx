@@ -2,25 +2,22 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Input from "@/shared/components/Input";
 import Button from "@/shared/components/Button";
 import {
   getParcelByCodeApi,
+  getParcelTransitionsApi,
   updateParcelStatusApi,
   ParcelResponse,
   ParcelStatus,
 } from "@/features/parcels/api/parcels.api";
 import { ApiError } from "@/shared/api/api-error";
 
-const SCAN_STATUSES: ParcelStatus[] = [
-  "RECEIVED_AT_ORIGIN_HUB", "ARRIVED_AT_HUB", "WAITING_FOR_OUTBOUND", "IN_TRANSIT",
-  "READY_FOR_DELIVERY", "OUT_FOR_DELIVERY", "DELIVERED", "DELIVERY_FAILED",
-];
-
 export default function ParcelScanPage() {
   const [code, setCode] = useState("");
-  const [status, setStatus] = useState<ParcelStatus>("ARRIVED_AT_HUB");
+  // No pre-selected status: the operator picks the event deliberately.
+  const [status, setStatus] = useState<ParcelStatus | null>(null);
   const [hubId, setHubId] = useState("");
   const [found, setFound] = useState<ParcelResponse | null>(null);
   const [banner, setBanner] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -29,7 +26,7 @@ export default function ParcelScanPage() {
     mutationFn: () => getParcelByCodeApi(code.trim()),
     onSuccess: (res) => {
       setFound(res.data);
-      setStatus(res.data.status);
+      setStatus(null);
       setBanner(null);
     },
     onError: (err) => {
@@ -38,9 +35,23 @@ export default function ParcelScanPage() {
     },
   });
 
+  // Which scan events this parcel will actually accept, per the server's state
+  // machine. Re-keyed on the current status so it refreshes after each scan.
+  const transitionsQuery = useQuery({
+    queryKey: ["parcel-transitions", found?.id, found?.status],
+    queryFn: () => getParcelTransitionsApi(found!.id),
+    enabled: !!found,
+    retry: false,
+  });
+
+  const allowed = transitionsQuery.data?.data.allowed ?? [];
+  const corrections = transitionsQuery.data?.data.corrections ?? [];
+  const isCorrection = status !== null && corrections.includes(status);
+
   const submit = useMutation({
     mutationFn: () => {
       if (!found) throw new Error("No parcel loaded");
+      if (!status) throw new Error("No status selected");
       return updateParcelStatusApi(found.id, {
         status,
         hubId: hubId ? Number(hubId) : undefined,
@@ -48,6 +59,7 @@ export default function ParcelScanPage() {
     },
     onSuccess: (res) => {
       setFound(res.data);
+      setStatus(null);
       setBanner({ kind: "ok", text: `Scan recorded — ${res.data.parcelCode} is now ${res.data.status}.` });
     },
     onError: (err) => {
@@ -95,22 +107,53 @@ export default function ParcelScanPage() {
             <span style={{ color: "var(--color-primary)" }}>{found.status}</span>{" "}
             (<Link href={`/parcels/${found.id}`} style={{ color: "var(--color-primary)" }}>details</Link>)
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-            <label style={{ fontSize: "0.875rem", fontWeight: 600 }}>Scan Event / New Status</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as ParcelStatus)}
-              style={{ padding: "0.625rem 0.75rem", borderRadius: "var(--radius-input, 8px)", border: "1px solid var(--color-border)", background: "var(--color-background)", color: "var(--color-text-primary)" }}
-            >
-              {SCAN_STATUSES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-          <Input type="number" label="Hub ID (optional)" value={hubId} onChange={(e) => setHubId(e.target.value)} />
-          <Button type="button" variant="primary" loading={submit.isPending} onClick={() => submit.mutate()}>
-            Submit Scan Event
-          </Button>
+          {allowed.length === 0 && corrections.length === 0 && !transitionsQuery.isLoading ? (
+            <p style={{ fontSize: "0.875rem", color: "var(--color-text-secondary)" }}>
+              <strong>{found.status}</strong> is a final status — no further scan is possible
+              here. A supervisor can correct it from the parcel details page.
+            </p>
+          ) : (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+                <label style={{ fontSize: "0.875rem", fontWeight: 600 }}>Scan Event / New Status</label>
+                <select
+                  value={status ?? ""}
+                  disabled={transitionsQuery.isLoading}
+                  onChange={(e) => setStatus(e.target.value ? (e.target.value as ParcelStatus) : null)}
+                  style={{ padding: "0.625rem 0.75rem", borderRadius: "var(--radius-input, 8px)", border: "1px solid var(--color-border)", background: "var(--color-background)", color: "var(--color-text-primary)" }}
+                >
+                  <option value="">
+                    {transitionsQuery.isLoading ? "Loading scan events..." : "Select a scan event..."}
+                  </option>
+                  {allowed.length > 0 && (
+                    <optgroup label="Next step">
+                      {allowed.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {corrections.length > 0 && (
+                    <optgroup label="Correction (supervisor)">
+                      {corrections.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {isCorrection && (
+                <div style={{ padding: "0.75rem 1rem", borderRadius: "var(--radius-card)", background: "rgba(245,158,11,0.12)", color: "#92400e", fontSize: "0.875rem" }}>
+                  This reverses a final status and is logged as a correction.
+                </div>
+              )}
+
+              <Input type="number" label="Hub ID (optional)" value={hubId} onChange={(e) => setHubId(e.target.value)} />
+              <Button type="button" variant="primary" disabled={!status} loading={submit.isPending} onClick={() => submit.mutate()}>
+                Submit Scan Event
+              </Button>
+            </>
+          )}
         </div>
       )}
     </div>
