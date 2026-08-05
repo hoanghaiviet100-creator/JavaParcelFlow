@@ -44,6 +44,18 @@ export async function cancelOrderApi(id: number | string): Promise<ApiEnvelope<n
   return httpClient.delete<ApiEnvelope<null>>(`/v1/orders/${id}`);
 }
 
+/**
+ * POST /api/v1/orders/{id}/reinstate — undo a cancellation.
+ *
+ * ADMIN / HUB_MANAGER only. The restored status is derived from the order's parcels,
+ * so the response says where the shipment actually is, not where it was cancelled.
+ */
+export async function reinstateOrderApi(
+  id: number | string
+): Promise<ApiEnvelope<OrderResponse>> {
+  return httpClient.post<ApiEnvelope<OrderResponse>>(`/v1/orders/${id}/reinstate`, {});
+}
+
 /** GET /api/v1/orders/{id}/tracking-events — internal tracking timeline. */
 export async function getOrderTrackingEventsApi(
   id: number | string

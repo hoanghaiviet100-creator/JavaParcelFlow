@@ -120,6 +120,50 @@ public class OrderService {
                 "Order " + order.getOrderCode() + " cancelled", order.getCurrentHubId(), true);
     }
 
+    /**
+     * Undo a cancellation.
+     *
+     * <p>Cancelling is the one order transition with no way back, and
+     * {@code ParcelService.syncOrderStatus} deliberately refuses to let parcel
+     * movement revive a cancelled order. Together that made a cancellation — whether
+     * deliberate or a mis-click on the wrong row — final: the order never changed
+     * status again, no matter what its parcels did, and the only repair was an UPDATE
+     * against the database.
+     *
+     * <p>The restored status is derived from the parcels rather than remembered, so a
+     * shipment reinstated after its parcels have moved on comes back at the point they
+     * actually reached, not the point where it was cancelled.
+     */
+    @Transactional
+    public OrderResponse reinstate(Long id) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Order not found: " + id));
+        if (order.getStatus() != OrderStatus.CANCELLED) {
+            throw ApiException.conflict("Order " + order.getOrderCode()
+                    + " is not cancelled (currently " + order.getStatus().name() + ")");
+        }
+
+        List<ParcelStatus> parcelStatuses = parcelRepository.findByOrderId(id).stream()
+                .map(Parcel::getStatus)
+                .toList();
+        OrderStatus restored = OrderStatusDeriver.derive(parcelStatuses);
+        if (restored == OrderStatus.CANCELLED) {
+            throw ApiException.conflict("Every parcel on " + order.getOrderCode()
+                    + " is cancelled, so there is nothing to reinstate. Correct a parcel"
+                    + " out of CANCELLED first and the order follows automatically.");
+        }
+
+        order.setStatus(restored);
+        orderRepository.save(order);
+
+        trackingService.record(order.getId(), null, restored.name(),
+                "Order reinstated",
+                "Order " + order.getOrderCode() + " reinstated as " + restored.name(),
+                order.getCurrentHubId(), true);
+
+        return getById(id);
+    }
+
     private OrderParty saveParty(PartyRequest p, Long orderId, PartyType type) {
         OrderParty party = OrderParty.builder()
                 .orderId(orderId)

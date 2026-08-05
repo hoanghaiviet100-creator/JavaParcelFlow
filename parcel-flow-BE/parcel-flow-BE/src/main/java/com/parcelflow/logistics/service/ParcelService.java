@@ -4,11 +4,13 @@ import com.parcelflow.common.enums.OrderStatus;
 import com.parcelflow.common.enums.ParcelStatus;
 import com.parcelflow.common.enums.ResponsibilityType;
 import com.parcelflow.common.error.ApiException;
+import com.parcelflow.common.error.ErrorCode;
 import com.parcelflow.domain.Order;
 import com.parcelflow.domain.Parcel;
 import com.parcelflow.domain.ParcelCurrentState;
 import com.parcelflow.domain.ParcelCustodyLog;
 import com.parcelflow.logistics.dto.ParcelResponse;
+import com.parcelflow.logistics.dto.ParcelTransitionsResponse;
 import com.parcelflow.logistics.dto.UpdateParcelStatusRequest;
 import com.parcelflow.repository.OrderRepository;
 import com.parcelflow.repository.ParcelCurrentStateRepository;
@@ -22,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -52,12 +56,32 @@ public class ParcelService {
         return toResponse(parcel);
     }
 
+    /**
+     * Status write for callers that act on the parcel's behalf rather than as a
+     * person — today the shipper assignment flow. These only ever request ordinary
+     * forward movement, so they get no supervisor rights.
+     */
     @Transactional
     public ParcelResponse updateStatus(Long parcelId, UpdateParcelStatusRequest req, Long actingUserId) {
+        return updateStatus(parcelId, req, actingUserId, null);
+    }
+
+    @Transactional
+    public ParcelResponse updateStatus(Long parcelId, UpdateParcelStatusRequest req,
+                                       Long actingUserId, String actingRole) {
         Parcel parcel = parcelRepository.findById(parcelId)
                 .orElseThrow(() -> ApiException.notFound("Parcel not found: " + parcelId));
 
         ParcelStatus next = req.getStatus();
+        ParcelStatus previousStatus = parcel.getStatus();
+        // Re-scanning the same status is legitimate (same state, new hub), so only a
+        // real change is checked against the state machine.
+        boolean correction = previousStatus != next
+                && !ParcelStatusTransitions.allowedFrom(previousStatus).contains(next);
+        if (correction) {
+            requireCorrectionRights(previousStatus, next, actingRole);
+        }
+
         parcel.setStatus(next);
         parcelRepository.save(parcel);
 
@@ -94,11 +118,56 @@ public class ParcelService {
 
         trackingService.record(parcel.getOrderId(), parcelId, next.name(),
                 "Parcel " + next.name(),
-                "Parcel status changed to " + next.name(), req.getHubId(), true);
+                correction
+                        ? "Parcel status corrected from " + previousStatus.name() + " to " + next.name()
+                        : "Parcel status changed to " + next.name(),
+                req.getHubId(), true);
 
-        syncOrderStatus(parcel.getOrderId(), req.getHubId());
+        // Only a supervisor deliberately walking a parcel back out of CANCELLED may
+        // revive its order; see syncOrderStatus.
+        syncOrderStatus(parcel.getOrderId(), req.getHubId(),
+                correction && previousStatus == ParcelStatus.CANCELLED);
 
         return toResponse(parcel);
+    }
+
+    /**
+     * A transition outside {@link ParcelStatusTransitions#allowedFrom} is either an
+     * impossible jump (rejected outright) or a known repair (allowed for supervisors).
+     * The rejection message lists what <em>is</em> reachable, so a mis-scan tells the
+     * operator what to do next instead of just refusing.
+     */
+    private void requireCorrectionRights(ParcelStatus current, ParcelStatus next, String actingRole) {
+        if (!ParcelStatusTransitions.correctionsFrom(current).contains(next)) {
+            throw ApiException.conflict("A parcel cannot go from " + current.name()
+                    + " to " + next.name() + ". Allowed from " + current.name() + ": "
+                    + describe(ParcelStatusTransitions.allowedFrom(current)));
+        }
+        if (!ParcelStatusTransitions.maySupervise(actingRole)) {
+            throw new ApiException(ErrorCode.AUTH_FORBIDDEN,
+                    "Correcting a parcel from " + current.name() + " to " + next.name()
+                            + " requires ADMIN or HUB_MANAGER");
+        }
+    }
+
+    private static String describe(Set<ParcelStatus> statuses) {
+        return statuses.isEmpty()
+                ? "nothing (this is a final status)"
+                : statuses.stream().map(Enum::name).sorted().collect(Collectors.joining(", "));
+    }
+
+    /** The statuses this parcel may move to, split by whether a repair is involved. */
+    @Transactional(readOnly = true)
+    public ParcelTransitionsResponse transitionsFor(Long parcelId, String actingRole) {
+        Parcel parcel = parcelRepository.findById(parcelId)
+                .orElseThrow(() -> ApiException.notFound("Parcel not found: " + parcelId));
+        ParcelStatus current = parcel.getStatus();
+        return new ParcelTransitionsResponse(
+                current,
+                ParcelStatusTransitions.allowedFrom(current).stream().sorted().toList(),
+                ParcelStatusTransitions.maySupervise(actingRole)
+                        ? ParcelStatusTransitions.correctionsFrom(current).stream().sorted().toList()
+                        : List.of());
     }
 
     /**
@@ -114,14 +183,24 @@ public class ParcelService {
      * order's own status is shown in the tracking header, so publishing both
      * doubled every step of the public timeline. Operations staff still get the
      * full audit trail through the authenticated tracking-events endpoint.
+     *
+     * @param reinstating a supervisor has just corrected this order's parcel out of
+     *                    CANCELLED, so the order is meant to come back with it
      */
-    private void syncOrderStatus(Long orderId, Long hubId) {
+    private void syncOrderStatus(Long orderId, Long hubId, boolean reinstating) {
         Order order = orderRepository.findById(orderId).orElse(null);
         if (order == null) {
             return;
         }
-        // A cancelled order stays cancelled; parcel movement must not revive it.
-        if (order.getStatus() == OrderStatus.CANCELLED) {
+        // A cancelled order stays cancelled; ordinary parcel movement must not revive
+        // it, because OrderService.cancel() cancels the order without touching its
+        // parcels and that decision has to stick.
+        //
+        // The exception is a supervisor correction out of CANCELLED. Without it the
+        // guard turned a single mis-scan into an unrecoverable order: the parcel could
+        // be repaired but the order stayed CANCELLED for good, and the only way back
+        // was an UPDATE against MySQL.
+        if (order.getStatus() == OrderStatus.CANCELLED && !reinstating) {
             return;
         }
 

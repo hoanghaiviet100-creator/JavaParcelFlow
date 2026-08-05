@@ -1,15 +1,26 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { getOrderApi, getOrderTrackingEventsApi } from "@/features/orders/api/orders.api";
+import {
+  getOrderApi,
+  getOrderTrackingEventsApi,
+  reinstateOrderApi,
+} from "@/features/orders/api/orders.api";
+import useAuth from "@/features/auth/hooks/useAuth";
+import Button from "@/shared/components/Button";
 import LoadingState from "@/shared/components/LoadingState";
 import ErrorState from "@/shared/components/ErrorState";
+import { ApiError } from "@/shared/api/api-error";
 
 export default function OrderDetailPage() {
   const params = useParams();
   const id = String(params.id);
+  const queryClient = useQueryClient();
+  const { role } = useAuth();
+  const [banner, setBanner] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   const orderQuery = useQuery({
     queryKey: ["order", id],
@@ -27,6 +38,25 @@ export default function OrderDetailPage() {
 
   const order = orderQuery.data?.data;
   const events = eventsQuery.data?.data ?? [];
+
+  // Reversing a cancellation is a supervisor decision; the API enforces the same
+  // pair of roles, this only keeps the button from appearing where it would 403.
+  const maySupervise = role === "ADMIN" || role === "HUB_MANAGER";
+
+  const reinstate = useMutation({
+    mutationFn: () => reinstateOrderApi(id),
+    onSuccess: (res) => {
+      setBanner({ kind: "ok", text: `Order reinstated as ${res.data.status}.` });
+      queryClient.invalidateQueries({ queryKey: ["order", id] });
+      queryClient.invalidateQueries({ queryKey: ["order-events", id] });
+    },
+    onError: (err) => {
+      setBanner({
+        kind: "err",
+        text: err instanceof ApiError ? err.message : "Could not reinstate this order.",
+      });
+    },
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
@@ -48,6 +78,30 @@ export default function OrderDetailPage() {
         <ErrorState title="Could not load this order" onRetry={() => orderQuery.refetch()} />
       ) : (
         <>
+          {banner && (
+            <div style={{ padding: "0.75rem 1rem", borderRadius: "var(--radius-card)", background: banner.kind === "ok" ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", color: banner.kind === "ok" ? "#065f46" : "#991b1b", fontSize: "0.875rem" }}>
+              {banner.text}
+            </div>
+          )}
+
+          {order.status === "CANCELLED" && (
+            <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-card)", padding: "1.5rem", backgroundColor: "var(--color-surface)", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700 }}>This order is cancelled</h3>
+              <p style={{ fontSize: "0.875rem", color: "var(--color-text-secondary)" }}>
+                {maySupervise
+                  ? "Parcel scans no longer move it. Reinstating restores the status from its parcels, so the order picks up wherever they actually are."
+                  : "Parcel scans no longer move it. An ADMIN or HUB_MANAGER can reinstate it."}
+              </p>
+              {maySupervise && (
+                <div>
+                  <Button type="button" variant="primary" loading={reinstate.isPending} onClick={() => { setBanner(null); reinstate.mutate(); }}>
+                    Reinstate Order
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
             <Card title="Sender">
               <PartyBlock

@@ -6,32 +6,36 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getParcelApi,
+  getParcelTransitionsApi,
   updateParcelStatusApi,
   ParcelStatus,
 } from "@/features/parcels/api/parcels.api";
+import {
+  createAssignmentApi,
+  getAssignableShippersApi,
+} from "@/features/shipper/api/shipper.api";
+import useAuth from "@/features/auth/hooks/useAuth";
 import Button from "@/shared/components/Button";
 import Input from "@/shared/components/Input";
 import LoadingState from "@/shared/components/LoadingState";
 import ErrorState from "@/shared/components/ErrorState";
 import { ApiError } from "@/shared/api/api-error";
 
-const PARCEL_STATUSES: ParcelStatus[] = [
-  "CREATED", "RECEIVED_AT_ORIGIN_HUB", "WAITING_FOR_ROUTE", "WAITING_FOR_OUTBOUND",
-  "IN_TRANSIT", "ARRIVED_AT_HUB", "READY_FOR_DELIVERY", "ASSIGNED_TO_SHIPPER",
-  "OUT_FOR_DELIVERY", "DELIVERED", "DELIVERY_FAILED", "RETURNING", "RETURNED",
-  "LOST", "DAMAGED", "CANCELLED",
-];
-
 export default function ParcelDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const queryClient = useQueryClient();
 
-  // `null` means "not yet chosen"; we then fall back to the parcel's live status.
+  // `null` means "nothing picked yet". There is deliberately no default: the old
+  // screen pre-selected the parcel's current status inside a list of all 16, which
+  // made an accidental one-click jump to CANCELLED far too easy.
   const [status, setStatus] = useState<ParcelStatus | null>(null);
   const [hubId, setHubId] = useState("");
   const [note, setNote] = useState("");
+  const [shipperId, setShipperId] = useState("");
+  const [assignReason, setAssignReason] = useState("");
   const [banner, setBanner] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const { role } = useAuth();
 
   const parcelQuery = useQuery({
     queryKey: ["parcel", id],
@@ -40,19 +44,77 @@ export default function ParcelDetailPage() {
     retry: false,
   });
 
+  // The server owns the state machine; we only render what it says is reachable.
+  const transitionsQuery = useQuery({
+    queryKey: ["parcel-transitions", id],
+    queryFn: () => getParcelTransitionsApi(id),
+    enabled: !!id,
+    retry: false,
+  });
+
   const parcel = parcelQuery.data?.data;
-  const selectedStatus: ParcelStatus = status ?? parcel?.status ?? "CREATED";
+  const allowed = transitionsQuery.data?.data.allowed ?? [];
+  const corrections = transitionsQuery.data?.data.corrections ?? [];
+  const isCorrection = status !== null && corrections.includes(status);
+  const isFinal = !transitionsQuery.isLoading && allowed.length === 0 && corrections.length === 0;
+
+  // A parcel is ready for a courier exactly when the state machine says it may
+  // become ASSIGNED_TO_SHIPPER, so the panel and the server agree by construction.
+  const mayDispatch = role === "ADMIN" || role === "DISPATCHER" || role === "HUB_MANAGER";
+  const canAssign = mayDispatch && allowed.includes("ASSIGNED_TO_SHIPPER");
+
+  const shippersQuery = useQuery({
+    queryKey: ["assignable-shippers"],
+    queryFn: () => getAssignableShippersApi(),
+    enabled: canAssign,
+    retry: false,
+  });
+  const shippers = shippersQuery.data?.data ?? [];
+
+  const assign = useMutation({
+    mutationFn: () => {
+      if (!shipperId) throw new Error("No courier selected");
+      return createAssignmentApi({
+        parcelId: Number(id),
+        shipperId: Number(shipperId),
+        assignmentReason: assignReason || undefined,
+      });
+    },
+    onSuccess: (res) => {
+      setBanner({
+        kind: "ok",
+        text: `Assigned to courier #${res.data.shipperId}. It is now in their queue.`,
+      });
+      setShipperId("");
+      setAssignReason("");
+      queryClient.invalidateQueries({ queryKey: ["parcel", id] });
+      queryClient.invalidateQueries({ queryKey: ["parcel-transitions", id] });
+      queryClient.invalidateQueries({ queryKey: ["assignable-shippers"] });
+    },
+    onError: (err) => {
+      setBanner({
+        kind: "err",
+        text: err instanceof ApiError ? err.message : "Could not assign this parcel.",
+      });
+    },
+  });
 
   const mutation = useMutation({
-    mutationFn: () =>
-      updateParcelStatusApi(id, {
-        status: selectedStatus,
+    mutationFn: () => {
+      if (!status) throw new Error("No status selected");
+      return updateParcelStatusApi(id, {
+        status,
         hubId: hubId ? Number(hubId) : undefined,
         note: note || undefined,
-      }),
-    onSuccess: () => {
-      setBanner({ kind: "ok", text: "Parcel status updated." });
+      });
+    },
+    onSuccess: (res) => {
+      setBanner({ kind: "ok", text: `Parcel is now ${res.data.status}.` });
+      setStatus(null);
+      setNote("");
       queryClient.invalidateQueries({ queryKey: ["parcel", id] });
+      // The next legal steps change with the status, so this must refetch too.
+      queryClient.invalidateQueries({ queryKey: ["parcel-transitions", id] });
     },
     onError: (err) => {
       setBanner({ kind: "err", text: err instanceof ApiError ? err.message : "Update failed." });
@@ -88,25 +150,101 @@ export default function ParcelDetailPage() {
             </div>
           )}
 
+          {canAssign && (
+            <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-card)", padding: "1.5rem", backgroundColor: "var(--color-surface)", display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div>
+                <h3 style={{ fontSize: "1rem", fontWeight: 700 }}>Assign to Courier</h3>
+                <p style={{ fontSize: "0.8125rem", color: "var(--color-text-secondary)", marginTop: "0.25rem" }}>
+                  Puts the parcel in that courier&apos;s queue and moves it to
+                  ASSIGNED_TO_SHIPPER in one step.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+                <label style={{ fontSize: "0.875rem", fontWeight: 600 }}>Courier</label>
+                <select
+                  value={shipperId}
+                  disabled={shippersQuery.isLoading}
+                  onChange={(e) => setShipperId(e.target.value)}
+                  style={{ padding: "0.625rem 0.75rem", borderRadius: "var(--radius-input, 8px)", border: "1px solid var(--color-border)", background: "var(--color-background)", color: "var(--color-text-primary)" }}
+                >
+                  <option value="">
+                    {shippersQuery.isLoading ? "Loading couriers..." : "Select a courier..."}
+                  </option>
+                  {shippers.map((s) => (
+                    <option key={s.userId} value={s.userId} disabled={!s.isAvailable}>
+                      {s.fullName} — hub {s.hubId} — {s.activeAssignments}/{s.maxOrdersPerDay} active
+                      {s.isAvailable ? "" : " (unavailable)"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <Input
+                type="text"
+                label="Reason (optional)"
+                value={assignReason}
+                onChange={(e) => setAssignReason(e.target.value)}
+              />
+              <Button type="button" variant="primary" disabled={!shipperId} loading={assign.isPending} onClick={() => { setBanner(null); assign.mutate(); }}>
+                Assign Parcel
+              </Button>
+            </div>
+          )}
+
           <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-card)", padding: "1.5rem", backgroundColor: "var(--color-surface)", display: "flex", flexDirection: "column", gap: "1rem" }}>
             <h3 style={{ fontSize: "1rem", fontWeight: 700 }}>Update Status</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
-              <label style={{ fontSize: "0.875rem", fontWeight: 600 }}>New Status</label>
-              <select
-                value={selectedStatus}
-                onChange={(e) => setStatus(e.target.value as ParcelStatus)}
-                style={{ padding: "0.625rem 0.75rem", borderRadius: "var(--radius-input, 8px)", border: "1px solid var(--color-border)", background: "var(--color-background)", color: "var(--color-text-primary)" }}
-              >
-                {PARCEL_STATUSES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-            <Input type="number" label="Hub ID (optional)" value={hubId} onChange={(e) => setHubId(e.target.value)} />
-            <Input type="text" label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-            <Button type="button" variant="primary" loading={mutation.isPending} onClick={() => { setBanner(null); mutation.mutate(); }}>
-              Submit Update
-            </Button>
+
+            {isFinal ? (
+              <p style={{ fontSize: "0.875rem", color: "var(--color-text-secondary)" }}>
+                <strong>{parcel.status}</strong> is a final status and no further scan is
+                possible. An ADMIN or HUB_MANAGER can still correct it if it was scanned
+                by mistake.
+              </p>
+            ) : (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+                  <label style={{ fontSize: "0.875rem", fontWeight: 600 }}>New Status</label>
+                  <select
+                    value={status ?? ""}
+                    disabled={transitionsQuery.isLoading}
+                    onChange={(e) => setStatus(e.target.value ? (e.target.value as ParcelStatus) : null)}
+                    style={{ padding: "0.625rem 0.75rem", borderRadius: "var(--radius-input, 8px)", border: "1px solid var(--color-border)", background: "var(--color-background)", color: "var(--color-text-primary)" }}
+                  >
+                    <option value="">
+                      {transitionsQuery.isLoading ? "Loading next steps..." : "Select a scan event..."}
+                    </option>
+                    {allowed.length > 0 && (
+                      <optgroup label="Next step">
+                        {allowed.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {corrections.length > 0 && (
+                      <optgroup label="Correction (supervisor)">
+                        {corrections.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+
+                {isCorrection && (
+                  <div style={{ padding: "0.75rem 1rem", borderRadius: "var(--radius-card)", background: "rgba(245,158,11,0.12)", color: "#92400e", fontSize: "0.875rem" }}>
+                    This reverses a final status. It is recorded in the custody log and on
+                    the customer timeline as a correction — leave a note saying why.
+                  </div>
+                )}
+
+                <Input type="number" label="Hub ID (optional)" value={hubId} onChange={(e) => setHubId(e.target.value)} />
+                <Input type="text" label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+                <Button type="button" variant="primary" disabled={!status} loading={mutation.isPending} onClick={() => { setBanner(null); mutation.mutate(); }}>
+                  Submit Update
+                </Button>
+              </>
+            )}
           </div>
         </>
       )}
