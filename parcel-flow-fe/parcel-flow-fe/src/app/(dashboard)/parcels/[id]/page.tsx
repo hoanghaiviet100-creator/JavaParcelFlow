@@ -10,6 +10,11 @@ import {
   updateParcelStatusApi,
   ParcelStatus,
 } from "@/features/parcels/api/parcels.api";
+import {
+  createAssignmentApi,
+  getAssignableShippersApi,
+} from "@/features/shipper/api/shipper.api";
+import useAuth from "@/features/auth/hooks/useAuth";
 import Button from "@/shared/components/Button";
 import Input from "@/shared/components/Input";
 import LoadingState from "@/shared/components/LoadingState";
@@ -27,7 +32,10 @@ export default function ParcelDetailPage() {
   const [status, setStatus] = useState<ParcelStatus | null>(null);
   const [hubId, setHubId] = useState("");
   const [note, setNote] = useState("");
+  const [shipperId, setShipperId] = useState("");
+  const [assignReason, setAssignReason] = useState("");
   const [banner, setBanner] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const { role } = useAuth();
 
   const parcelQuery = useQuery({
     queryKey: ["parcel", id],
@@ -49,6 +57,47 @@ export default function ParcelDetailPage() {
   const corrections = transitionsQuery.data?.data.corrections ?? [];
   const isCorrection = status !== null && corrections.includes(status);
   const isFinal = !transitionsQuery.isLoading && allowed.length === 0 && corrections.length === 0;
+
+  // A parcel is ready for a courier exactly when the state machine says it may
+  // become ASSIGNED_TO_SHIPPER, so the panel and the server agree by construction.
+  const mayDispatch = role === "ADMIN" || role === "DISPATCHER" || role === "HUB_MANAGER";
+  const canAssign = mayDispatch && allowed.includes("ASSIGNED_TO_SHIPPER");
+
+  const shippersQuery = useQuery({
+    queryKey: ["assignable-shippers"],
+    queryFn: () => getAssignableShippersApi(),
+    enabled: canAssign,
+    retry: false,
+  });
+  const shippers = shippersQuery.data?.data ?? [];
+
+  const assign = useMutation({
+    mutationFn: () => {
+      if (!shipperId) throw new Error("No courier selected");
+      return createAssignmentApi({
+        parcelId: Number(id),
+        shipperId: Number(shipperId),
+        assignmentReason: assignReason || undefined,
+      });
+    },
+    onSuccess: (res) => {
+      setBanner({
+        kind: "ok",
+        text: `Assigned to courier #${res.data.shipperId}. It is now in their queue.`,
+      });
+      setShipperId("");
+      setAssignReason("");
+      queryClient.invalidateQueries({ queryKey: ["parcel", id] });
+      queryClient.invalidateQueries({ queryKey: ["parcel-transitions", id] });
+      queryClient.invalidateQueries({ queryKey: ["assignable-shippers"] });
+    },
+    onError: (err) => {
+      setBanner({
+        kind: "err",
+        text: err instanceof ApiError ? err.message : "Could not assign this parcel.",
+      });
+    },
+  });
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -98,6 +147,48 @@ export default function ParcelDetailPage() {
           {banner && (
             <div style={{ padding: "0.75rem 1rem", borderRadius: "var(--radius-card)", background: banner.kind === "ok" ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", color: banner.kind === "ok" ? "#065f46" : "#991b1b", fontSize: "0.875rem" }}>
               {banner.text}
+            </div>
+          )}
+
+          {canAssign && (
+            <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-card)", padding: "1.5rem", backgroundColor: "var(--color-surface)", display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div>
+                <h3 style={{ fontSize: "1rem", fontWeight: 700 }}>Assign to Courier</h3>
+                <p style={{ fontSize: "0.8125rem", color: "var(--color-text-secondary)", marginTop: "0.25rem" }}>
+                  Puts the parcel in that courier&apos;s queue and moves it to
+                  ASSIGNED_TO_SHIPPER in one step.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+                <label style={{ fontSize: "0.875rem", fontWeight: 600 }}>Courier</label>
+                <select
+                  value={shipperId}
+                  disabled={shippersQuery.isLoading}
+                  onChange={(e) => setShipperId(e.target.value)}
+                  style={{ padding: "0.625rem 0.75rem", borderRadius: "var(--radius-input, 8px)", border: "1px solid var(--color-border)", background: "var(--color-background)", color: "var(--color-text-primary)" }}
+                >
+                  <option value="">
+                    {shippersQuery.isLoading ? "Loading couriers..." : "Select a courier..."}
+                  </option>
+                  {shippers.map((s) => (
+                    <option key={s.userId} value={s.userId} disabled={!s.isAvailable}>
+                      {s.fullName} — hub {s.hubId} — {s.activeAssignments}/{s.maxOrdersPerDay} active
+                      {s.isAvailable ? "" : " (unavailable)"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <Input
+                type="text"
+                label="Reason (optional)"
+                value={assignReason}
+                onChange={(e) => setAssignReason(e.target.value)}
+              />
+              <Button type="button" variant="primary" disabled={!shipperId} loading={assign.isPending} onClick={() => { setBanner(null); assign.mutate(); }}>
+                Assign Parcel
+              </Button>
             </div>
           )}
 
